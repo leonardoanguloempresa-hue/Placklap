@@ -1,6 +1,7 @@
 package com.robopal.app.agent.tools
 
 import com.robopal.app.agent.Tool
+import com.robopal.app.services.AgentAccessibilityService
 
 class TapTool : Tool {
     override val name: String = "tap"
@@ -15,6 +16,19 @@ class TapTool : Tool {
     )
 
     override suspend fun execute(args: Map<String, Any>): String {
-        return "Simulación exitosa: tap ejecutada con argumentos: $args"
+        val service = AgentAccessibilityService.instance
+            ?: return "Error: AgentAccessibilityService no está activo. Solicita al usuario que lo habilite en los ajustes de Accesibilidad."
+
+        val x = (args["x"] as? Number)?.toFloat()
+            ?: return "Error: Parámetro 'x' no válido."
+        val y = (args["y"] as? Number)?.toFloat()
+            ?: return "Error: Parámetro 'y' no válido."
+
+        val success = service.tap(x, y)
+        return if (success) {
+            "Toque realizado con éxito en coordenadas ($x, $y)."
+        } else {
+            "Error al ejecutar toque en ($x, $y)."
+        }
     }
 }
