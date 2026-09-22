@@ -1,0 +1,2 @@
+# Archivo de ejemplo. Crea tu propio local.properties copiando este archivo y configurando la ruta real de tu SDK.
+sdk.dir=/path/to/android/sdk
