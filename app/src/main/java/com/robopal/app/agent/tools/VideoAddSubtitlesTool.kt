@@ -1,10 +1,11 @@
 package com.robopal.app.agent.tools
 
+import com.robopal.app.RoboPalApplication
 import com.robopal.app.agent.Tool
 
 class VideoAddSubtitlesTool : Tool {
     override val name: String = "video_add_subtitles"
-    override val description: String = "Incrusta o incrusta subtítulos (subtítulo SRT/ASS) en un archivo de video mediante FFmpeg."
+    override val description: String = "Incrusta subtítulos en un archivo de video mediante FFmpeg."
     override val parameterSchema: Map<String, Any> = mapOf(
         "type" to "object",
         "properties" to mapOf(
@@ -16,6 +17,13 @@ class VideoAddSubtitlesTool : Tool {
     )
 
     override suspend fun execute(args: Map<String, Any>): String {
-        return "Simulación exitosa: video_add_subtitles ejecutada con argumentos: $args"
+        val videoPath = args["videoPath"] as? String
+            ?: return "Error: Parámetro 'videoPath' no válido."
+        val subtitlePath = args["subtitlePath"] as? String
+            ?: return "Error: Parámetro 'subtitlePath' no válido."
+        val outputPath = args["outputPath"] as? String
+            ?: return "Error: Parámetro 'outputPath' no válido."
+
+        return RoboPalApplication.ffmpegManager.addSubtitles(videoPath, subtitlePath, outputPath)
     }
 }

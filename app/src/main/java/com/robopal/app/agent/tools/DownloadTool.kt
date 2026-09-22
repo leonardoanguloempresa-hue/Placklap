@@ -1,5 +1,6 @@
 package com.robopal.app.agent.tools
 
+import com.robopal.app.RoboPalApplication
 import com.robopal.app.agent.Tool
 
 class DownloadTool : Tool {
@@ -15,6 +16,11 @@ class DownloadTool : Tool {
     )
 
     override suspend fun execute(args: Map<String, Any>): String {
-        return "Simulación exitosa: download ejecutada con argumentos: $args"
+        val url = args["url"] as? String
+            ?: return "Error: Parámetro 'url' no válido."
+        val destinationPath = args["destinationPath"] as? String
+            ?: return "Error: Parámetro 'destinationPath' no válido."
+
+        return RoboPalApplication.downloadManager.downloadFile(url, destinationPath)
     }
 }

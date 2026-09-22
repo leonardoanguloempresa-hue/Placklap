@@ -18,6 +18,7 @@ import com.robopal.app.agent.tools.VideoAddSubtitlesTool
 import com.robopal.app.agent.tools.VideoCutTool
 import com.robopal.app.agent.tools.VideoMergeTool
 import com.robopal.app.agent.tools.WaitTool
+import com.robopal.app.managers.Logger
 
 class ToolRegistry {
 
@@ -58,11 +59,17 @@ class ToolRegistry {
 
     suspend fun executeTool(name: String, args: Map<String, Any>): String {
         val tool = getTool(name)
-            ?: return "Error: Herramienta '$name' no encontrada en el catálogo."
-        return try {
+            ?: run {
+                val errorMsg = "Error: Herramienta '$name' no encontrada en el catálogo."
+                Logger.logToolExecution(name, args, errorMsg)
+                return errorMsg
+            }
+        val result = try {
             tool.execute(args)
         } catch (e: Exception) {
             "Error al ejecutar la herramienta '$name': ${e.localizedMessage ?: e.message}"
         }
+        Logger.logToolExecution(name, args, result)
+        return result
     }
 }
