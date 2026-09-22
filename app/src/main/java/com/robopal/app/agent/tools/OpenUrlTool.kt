@@ -1,5 +1,9 @@
 package com.robopal.app.agent.tools
 
+import android.content.Context
+import android.content.Intent
+import android.net.Uri
+import com.robopal.app.RoboPalApplication
 import com.robopal.app.agent.Tool
 
 class OpenUrlTool : Tool {
@@ -14,6 +18,18 @@ class OpenUrlTool : Tool {
     )
 
     override suspend fun execute(args: Map<String, Any>): String {
-        return "Simulación exitosa: open_url ejecutada con argumentos: $args"
+        val url = args["url"] as? String
+            ?: return "Error: Parámetro 'url' no especificado."
+
+        val context: Context = RoboPalApplication.instance
+        return try {
+            val intent = Intent(Intent.ACTION_VIEW, Uri.parse(url)).apply {
+                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            }
+            context.startActivity(intent)
+            "URL '$url' abierta con éxito en el navegador."
+        } catch (e: Exception) {
+            "Error al abrir URL '$url': ${e.localizedMessage ?: e.message}"
+        }
     }
 }

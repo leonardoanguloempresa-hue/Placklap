@@ -1,5 +1,6 @@
 package com.robopal.app.agent.tools
 
+import com.robopal.app.RoboPalApplication
 import com.robopal.app.agent.Tool
 
 class VideoCutTool : Tool {
@@ -17,6 +18,15 @@ class VideoCutTool : Tool {
     )
 
     override suspend fun execute(args: Map<String, Any>): String {
-        return "Simulación exitosa: video_cut ejecutada con argumentos: $args"
+        val inputPath = args["inputPath"] as? String
+            ?: return "Error: Parámetro 'inputPath' no válido."
+        val outputPath = args["outputPath"] as? String
+            ?: return "Error: Parámetro 'outputPath' no válido."
+        val startTime = args["startTime"] as? String
+            ?: return "Error: Parámetro 'startTime' no válido."
+        val endTime = args["endTime"] as? String
+            ?: return "Error: Parámetro 'endTime' no válido."
+
+        return RoboPalApplication.ffmpegManager.cutVideo(inputPath, outputPath, startTime, endTime)
     }
 }

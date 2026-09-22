@@ -1,6 +1,7 @@
 package com.robopal.app.agent.tools
 
 import com.robopal.app.agent.Tool
+import com.robopal.app.services.AgentAccessibilityService
 
 class ReadScreenTool : Tool {
     override val name: String = "read_screen"
@@ -11,6 +12,9 @@ class ReadScreenTool : Tool {
     )
 
     override suspend fun execute(args: Map<String, Any>): String {
-        return "Simulación exitosa: read_screen ejecutada con argumentos: $args"
+        val service = AgentAccessibilityService.instance
+            ?: return "Error: AgentAccessibilityService no está activo. Solicita al usuario que lo habilite en los ajustes de Accesibilidad."
+
+        return service.readScreenState()
     }
 }

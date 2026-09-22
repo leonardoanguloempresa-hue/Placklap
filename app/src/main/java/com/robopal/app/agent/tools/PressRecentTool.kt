@@ -1,6 +1,8 @@
 package com.robopal.app.agent.tools
 
+import android.accessibilityservice.AccessibilityService
 import com.robopal.app.agent.Tool
+import com.robopal.app.services.AgentAccessibilityService
 
 class PressRecentTool : Tool {
     override val name: String = "press_recent"
@@ -11,6 +13,14 @@ class PressRecentTool : Tool {
     )
 
     override suspend fun execute(args: Map<String, Any>): String {
-        return "Simulación exitosa: press_recent ejecutada con argumentos: $args"
+        val service = AgentAccessibilityService.instance
+            ?: return "Error: AgentAccessibilityService no está activo. Solicita al usuario que lo habilite en los ajustes de Accesibilidad."
+
+        val success = service.performGlobalAction(AccessibilityService.GLOBAL_ACTION_RECENTS)
+        return if (success) {
+            "Acción de Aplicaciones Recientes ejecutada con éxito."
+        } else {
+            "Error al ejecutar acción de Aplicaciones Recientes."
+        }
     }
 }
