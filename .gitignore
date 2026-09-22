@@ -1,0 +1,37 @@
+# Built application files
+*.apk
+*.aar
+*.ap_
+*.aab
+
+# Files for the Android Tooling
+local.properties
+lint/intermediates/
+lint/generated/
+lint/outputs/
+lint/tmp/
+
+# Native build output
+.externalNativeBuild
+.cxx/
+build/
+
+# Gradle files
+.gradle/
+
+# IDE files
+.idea/
+*.iml
+.navigation/
+
+# Keystore files
+# Allow debug keystore so builds can be run without extra configuration
+*.keystore
+!debug.keystore
+*.jks
+
+# macOS / OS X
+.DS_Store
+
+# Android Studio navigation file
+capture/
