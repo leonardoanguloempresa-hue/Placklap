@@ -1,9 +1,11 @@
 package com.robopal.app.ui.screens
 
+import android.accessibilityservice.AccessibilityServiceInfo
 import android.content.Context
 import android.content.Intent
 import android.net.Uri
 import android.provider.Settings
+import android.view.accessibility.AccessibilityManager
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Column
@@ -16,8 +18,6 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material3.Button
-import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.OutlinedCard
@@ -29,7 +29,6 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -45,51 +44,51 @@ import com.robopal.app.ui.theme.RobotPrimary
 import com.robopal.app.ui.theme.SurfaceDark
 import com.robopal.app.ui.theme.TextPrimary
 import com.robopal.app.ui.theme.TextSecondary
-import kotlinx.coroutines.launch
-
-data class GgufModelInfo(
-    val name: String,
-    val url: String,
-    val fileName: String
-)
+import java.io.File
 
 @Composable
 fun SettingsScreen(
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
-    val scope = rememberCoroutineScope()
 
     var accessibilityEnabled by remember { mutableStateOf(false) }
     var overlayEnabled by remember { mutableStateOf(false) }
     var confirmDangerousActions by remember { mutableStateOf(true) }
 
-    val modelOptions = listOf(
-        GgufModelInfo(
-            name = "Qwen 1.5 1.8B Chat (Q4_K_M)",
-            url = "https://huggingface.co/Qwen/Qwen1.5-1.8B-Chat-GGUF/resolve/main/qwen1_5-1_8b-chat-q4_k_m.gguf",
-            fileName = "qwen1_5-1_8b-chat-q4_k_m.gguf"
-        ),
-        GgufModelInfo(
-            name = "Llama 3.2 1B Instruct (Q4_K_M)",
-            url = "https://huggingface.co/bartowski/Llama-3.2-1B-Instruct-GGUF/resolve/main/Llama-3.2-1B-Instruct-Q4_K_M.gguf",
-            fileName = "Llama-3.2-1B-Instruct-Q4_K_M.gguf"
-        ),
-        GgufModelInfo(
-            name = "Qwen 2.5 0.5B Instruct (Q4_K_M)",
-            url = "https://huggingface.co/Qwen/Qwen2.5-0.5B-Instruct-GGUF/resolve/main/qwen2.5-0.5b-instruct-q4_k_m.gguf",
-            fileName = "qwen2.5-0.5b-instruct-q4_k_m.gguf"
-        )
-    )
-
-    var selectedModel by remember { mutableStateOf(modelOptions[0]) }
+    var localGgufFiles by remember { mutableStateOf<List<File>>(emptyList()) }
+    var selectedModelName by remember { mutableStateOf("") }
     var expandedModelDropdown by remember { mutableStateOf(false) }
-    var downloadStatusText by remember { mutableStateOf("") }
-    var isDownloading by remember { mutableStateOf(false) }
+
+    fun isAccessibilityServiceEnabled(ctx: Context): Boolean {
+        if (AgentAccessibilityService.instance != null) return true
+        val am = ctx.getSystemService(Context.ACCESSIBILITY_SERVICE) as? AccessibilityManager ?: return false
+        val enabledServices = am.getEnabledAccessibilityServiceList(AccessibilityServiceInfo.FEEDBACK_GENERIC)
+        return enabledServices.any { it.resolveInfo.serviceInfo.packageName == ctx.packageName }
+    }
+
+    fun refreshState() {
+        accessibilityEnabled = isAccessibilityServiceEnabled(context)
+        overlayEnabled = Settings.canDrawOverlays(context)
+
+        val dir = RoboPalApplication.llmManager.modelDirectory
+        if (dir.exists()) {
+            val files = dir.listFiles { _, name -> name.endsWith(".gguf", ignoreCase = true) }?.toList() ?: emptyList()
+            localGgufFiles = files
+            val active = RoboPalApplication.llmManager.activeModelFile
+            if (active != null && files.contains(active)) {
+                selectedModelName = active.name
+            } else if (files.isNotEmpty()) {
+                selectedModelName = files.first().name
+                RoboPalApplication.llmManager.setActiveModel(files.first())
+            } else {
+                selectedModelName = "No hay modelos .gguf locales"
+            }
+        }
+    }
 
     LaunchedEffect(Unit) {
-        accessibilityEnabled = AgentAccessibilityService.instance != null
-        overlayEnabled = Settings.canDrawOverlays(context)
+        refreshState()
     }
 
     Column(
@@ -116,11 +115,11 @@ fun SettingsScreen(
             modifier = Modifier.padding(bottom = 8.dp)
         )
 
-        SettingToggleItem(
+        ReactivePermissionToggle(
             title = "Servicio de Accesibilidad",
-            subtitle = "Abre los ajustes para habilitar RoboPal (Tocar, deslizar, leer pantalla)",
-            checked = accessibilityEnabled,
-            onCheckedChange = {
+            subtitle = if (accessibilityEnabled) "Concedido: RoboPal tiene permiso de accesibilidad." else "Requerido: Abre los ajustes para habilitar RoboPal.",
+            isGranted = accessibilityEnabled,
+            onGrantClick = {
                 val intent = Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS).apply {
                     addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
                 }
@@ -128,11 +127,11 @@ fun SettingsScreen(
             }
         )
 
-        SettingToggleItem(
+        ReactivePermissionToggle(
             title = "Mostrar sobre otras aplicaciones (Overlay)",
-            subtitle = "Abre los ajustes para autorizar la cara flotante sobre otras apps",
-            checked = overlayEnabled,
-            onCheckedChange = {
+            subtitle = if (overlayEnabled) "Concedido: Permiso de ventana flotante activo." else "Requerido: Abre los ajustes para autorizar la cara flotante.",
+            isGranted = overlayEnabled,
+            onGrantClick = {
                 val intent = Intent(
                     Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
                     Uri.parse("package:" + context.packageName)
@@ -145,7 +144,7 @@ fun SettingsScreen(
 
         Spacer(modifier = Modifier.height(16.dp))
 
-        // Seguridad y Agente
+        // Seguridad
         Text(
             text = "Seguridad y Agente",
             fontSize = 14.sp,
@@ -163,9 +162,9 @@ fun SettingsScreen(
 
         Spacer(modifier = Modifier.height(16.dp))
 
-        // Modelo LLM GGUF
+        // Modelo Activo
         Text(
-            text = "Modelo LLM Local (GGUF)",
+            text = "Modelo LLM Activo",
             fontSize = 14.sp,
             fontWeight = FontWeight.SemiBold,
             color = RobotPrimary,
@@ -180,13 +179,13 @@ fun SettingsScreen(
                 .padding(12.dp)
         ) {
             Text(
-                text = "Modelo de IA seleccionado",
+                text = "Seleccionar Modelo .GGUF Cargado",
                 fontSize = 15.sp,
                 color = TextPrimary,
                 fontWeight = FontWeight.Medium
             )
             Text(
-                text = "Descarga e instala el modelo .gguf para inferencia local offline",
+                text = "Define qué archivo físico usará el LlmManager para inferencia",
                 fontSize = 12.sp,
                 color = TextSecondary,
                 modifier = Modifier.padding(bottom = 8.dp)
@@ -196,10 +195,10 @@ fun SettingsScreen(
                 OutlinedCard(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .clickable { expandedModelDropdown = true }
+                        .clickable(enabled = localGgufFiles.isNotEmpty()) { expandedModelDropdown = true }
                 ) {
                     Text(
-                        text = selectedModel.name,
+                        text = selectedModelName,
                         color = TextPrimary,
                         fontSize = 14.sp,
                         modifier = Modifier.padding(12.dp)
@@ -211,49 +210,65 @@ fun SettingsScreen(
                     onDismissRequest = { expandedModelDropdown = false },
                     modifier = Modifier.background(SurfaceDark)
                 ) {
-                    modelOptions.forEach { option ->
+                    localGgufFiles.forEach { file ->
                         DropdownMenuItem(
-                            text = { Text(option.name, color = TextPrimary) },
+                            text = { Text(file.name, color = TextPrimary) },
                             onClick = {
-                                selectedModel = option
+                                selectedModelName = file.name
+                                RoboPalApplication.llmManager.setActiveModel(file)
                                 expandedModelDropdown = false
                             }
                         )
                     }
                 }
             }
-
-            Spacer(modifier = Modifier.height(12.dp))
-
-            Button(
-                onClick = {
-                    isDownloading = true
-                    downloadStatusText = "Iniciando descarga de ${selectedModel.fileName}..."
-                    scope.launch {
-                        val result = RoboPalApplication.downloadManager.downloadFile(
-                            url = selectedModel.url,
-                            destinationPath = "/sdcard/RoboPal/models/${selectedModel.fileName}"
-                        )
-                        downloadStatusText = result
-                        isDownloading = false
-                    }
-                },
-                enabled = !isDownloading,
-                colors = ButtonDefaults.buttonColors(containerColor = RobotPrimary),
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                Text(if (isDownloading) "Descargando..." else "Descargar Modelo .gguf")
-            }
-
-            if (downloadStatusText.isNotBlank()) {
-                Text(
-                    text = downloadStatusText,
-                    fontSize = 12.sp,
-                    color = TextSecondary,
-                    modifier = Modifier.padding(top = 8.dp)
-                )
-            }
         }
+    }
+}
+
+@Composable
+fun ReactivePermissionToggle(
+    title: String,
+    subtitle: String,
+    isGranted: Boolean,
+    onGrantClick: () -> Unit
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = 4.dp)
+            .clip(RoundedCornerShape(12.dp))
+            .background(SurfaceDark)
+            .padding(12.dp)
+            .clickable(enabled = !isGranted) { onGrantClick() },
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Column(modifier = Modifier.weight(1f)) {
+            Text(
+                text = title,
+                fontSize = 15.sp,
+                fontWeight = FontWeight.Medium,
+                color = TextPrimary
+            )
+            Text(
+                text = subtitle,
+                fontSize = 12.sp,
+                color = if (isGranted) RobotPrimary else TextSecondary
+            )
+        }
+        Switch(
+            checked = isGranted,
+            enabled = !isGranted,
+            onCheckedChange = { if (!isGranted) onGrantClick() },
+            colors = SwitchDefaults.colors(
+                checkedThumbColor = TextPrimary,
+                checkedTrackColor = RobotPrimary,
+                disabledCheckedThumbColor = TextPrimary,
+                disabledCheckedTrackColor = RobotPrimary.copy(alpha = 0.6f),
+                uncheckedThumbColor = TextSecondary,
+                uncheckedTrackColor = DarkBackground
+            )
+        )
     }
 }
 

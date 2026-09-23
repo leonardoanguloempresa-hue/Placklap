@@ -25,6 +25,7 @@ import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Tab
@@ -34,6 +35,7 @@ import androidx.compose.material3.TabRowDefaults.tabIndicatorOffset
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -62,6 +64,7 @@ fun ModelsScreen(
 ) {
     val hfClient = remember { HuggingFaceClient() }
     val scope = rememberCoroutineScope()
+    val downloadProgressState by RoboPalApplication.downloadManager.downloadProgress.collectAsState()
 
     var selectedTabIndex by remember { mutableStateOf(0) }
     val tabs = listOf("Explorador HuggingFace", "Modelos Descargados")
@@ -82,8 +85,12 @@ fun ModelsScreen(
         if (dir.exists()) {
             val files = dir.listFiles { _, name -> name.endsWith(".gguf", ignoreCase = true) }?.toList() ?: emptyList()
             localGgufFiles = files
-            if (activeModelName.isBlank() && files.isNotEmpty()) {
+            val active = RoboPalApplication.llmManager.activeModelFile
+            if (active != null && files.contains(active)) {
+                activeModelName = active.name
+            } else if (files.isNotEmpty()) {
                 activeModelName = files.first().name
+                RoboPalApplication.llmManager.setActiveModel(files.first())
             }
         }
     }
@@ -134,6 +141,33 @@ fun ModelsScreen(
         }
 
         Spacer(modifier = Modifier.height(12.dp))
+
+        // Barra/Detalle de Progreso Real de Descarga
+        val progressInfo = downloadProgressState
+        if (progressInfo != null && !progressInfo.isCompleted && progressInfo.error == null) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(8.dp))
+                    .background(SurfaceDark)
+                    .padding(8.dp)
+            ) {
+                Text(
+                    text = "Descargando ${progressInfo.fileName}: ${progressInfo.percentage}% (${progressInfo.bytesDownloaded / (1024 * 1024)}MB / ${progressInfo.totalBytes / (1024 * 1024)}MB)",
+                    color = RobotPrimary,
+                    fontSize = 12.sp,
+                    fontWeight = FontWeight.Bold
+                )
+                Spacer(modifier = Modifier.height(4.dp))
+                LinearProgressIndicator(
+                    progress = progressInfo.percentage / 100f,
+                    modifier = Modifier.fillMaxWidth(),
+                    color = RobotPrimary,
+                    trackColor = DarkBackground
+                )
+            }
+            Spacer(modifier = Modifier.height(8.dp))
+        }
 
         if (statusMessage.isNotBlank()) {
             Text(
@@ -220,7 +254,7 @@ fun ModelsScreen(
                                         val downloadUrl = hfClient.getGgufDownloadUrl(model.id)
                                         if (downloadUrl != null) {
                                             val fileName = downloadUrl.substringAfterLast("/")
-                                            statusMessage = "Descargando $fileName..."
+                                            statusMessage = "Iniciando descarga de $fileName..."
                                             val destPath = File(RoboPalApplication.llmManager.modelDirectory, fileName).absolutePath
                                             val result = RoboPalApplication.downloadManager.downloadFile(downloadUrl, destPath)
                                             statusMessage = result
@@ -255,6 +289,7 @@ fun ModelsScreen(
                                 isActive = file.name == activeModelName,
                                 onSelect = {
                                     activeModelName = file.name
+                                    RoboPalApplication.llmManager.setActiveModel(file)
                                     statusMessage = "Modelo activo: ${file.name}"
                                 }
                             )

@@ -7,9 +7,9 @@ import android.content.Intent
 import android.graphics.PixelFormat
 import android.os.Build
 import android.os.Bundle
-import android.os.IBinder
 import android.provider.Settings
 import android.view.Gravity
+import android.view.View
 import android.view.WindowManager
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -17,6 +17,7 @@ import androidx.compose.ui.platform.ComposeView
 import androidx.lifecycle.LifecycleService
 import androidx.lifecycle.ViewModelStore
 import androidx.lifecycle.ViewModelStoreOwner
+import androidx.lifecycle.lifecycleScope
 import androidx.lifecycle.setViewTreeLifecycleOwner
 import androidx.lifecycle.setViewTreeViewModelStoreOwner
 import androidx.savedstate.SavedStateRegistry
@@ -27,6 +28,9 @@ import com.robopal.app.RoboPalApplication
 import com.robopal.app.agent.AgentState
 import com.robopal.app.ui.robot.RobotFace
 import com.robopal.app.ui.theme.RoboPalTheme
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 
 class OverlayService : LifecycleService(), ViewModelStoreOwner, SavedStateRegistryOwner {
 
@@ -38,6 +42,7 @@ class OverlayService : LifecycleService(), ViewModelStoreOwner, SavedStateRegist
 
     private var windowManager: WindowManager? = null
     private var composeView: ComposeView? = null
+    private var idleTimerJob: Job? = null
 
     private val serviceViewModelStore = ViewModelStore()
     private val savedStateRegistryController = SavedStateRegistryController.create(this)
@@ -57,12 +62,14 @@ class OverlayService : LifecycleService(), ViewModelStoreOwner, SavedStateRegist
 
         if (Settings.canDrawOverlays(this)) {
             showOverlayWindow()
+            observeAgentStateForEphemeralFace()
         }
     }
 
     override fun onDestroy() {
         super.onDestroy()
         removeOverlayWindow()
+        idleTimerJob?.cancel()
         serviceViewModelStore.clear()
         if (instance == this) {
             instance = null
@@ -72,6 +79,40 @@ class OverlayService : LifecycleService(), ViewModelStoreOwner, SavedStateRegist
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         super.onStartCommand(intent, flags, startId)
         return START_STICKY
+    }
+
+    fun showFace() {
+        composeView?.visibility = View.VISIBLE
+    }
+
+    fun hideFace() {
+        composeView?.visibility = View.GONE
+    }
+
+    private fun observeAgentStateForEphemeralFace() {
+        lifecycleScope.launch {
+            RoboPalApplication.agentEngine.state.collect { state ->
+                idleTimerJob?.cancel()
+                when (state) {
+                    AgentState.LISTENING,
+                    AgentState.THINKING,
+                    AgentState.SPEAKING,
+                    AgentState.WORKING,
+                    AgentState.ERROR -> {
+                        showFace()
+                    }
+                    AgentState.IDLE -> {
+                        idleTimerJob = lifecycleScope.launch {
+                            delay(5000)
+                            if (RoboPalApplication.agentEngine.state.value == AgentState.IDLE) {
+                                hideFace()
+                                RoboPalApplication.agentEngine.clearHistory()
+                            }
+                        }
+                    }
+                }
+            }
+        }
     }
 
     private fun showOverlayWindow() {
@@ -85,8 +126,8 @@ class OverlayService : LifecycleService(), ViewModelStoreOwner, SavedStateRegist
         }
 
         val params = WindowManager.LayoutParams(
-            220, // Ancho de la ventana flotante en px
-            220, // Alto de la ventana flotante en px
+            220,
+            220,
             layoutType,
             WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN,
             PixelFormat.TRANSLUCENT
@@ -100,6 +141,8 @@ class OverlayService : LifecycleService(), ViewModelStoreOwner, SavedStateRegist
             setViewTreeLifecycleOwner(this@OverlayService)
             setViewTreeViewModelStoreOwner(this@OverlayService)
             setViewTreeSavedStateRegistryOwner(this@OverlayService)
+
+            visibility = View.GONE // Oculto por defecto en modo efímero
 
             setContent {
                 RoboPalTheme {
@@ -126,7 +169,7 @@ class OverlayService : LifecycleService(), ViewModelStoreOwner, SavedStateRegist
                 "Servicio Flotante RoboPal",
                 NotificationManager.IMPORTANCE_LOW
             ).apply {
-                description = "Mantiene la cara flotante de RoboPal visible en pantalla."
+                description = "Mantiene la cara flotante de RoboPal disponible en segundo plano."
             }
             val manager = getSystemService(NotificationManager::class.java)
             manager?.createNotificationChannel(channel)
@@ -143,7 +186,7 @@ class OverlayService : LifecycleService(), ViewModelStoreOwner, SavedStateRegist
 
         return builder
             .setContentTitle("RoboPal - Flotante Activo")
-            .setContentText("Cara flotante superpuesta sobre aplicaciones")
+            .setContentText("Cara flotante efímera lista en segundo plano")
             .setSmallIcon(android.R.drawable.ic_dialog_info)
             .setOngoing(true)
             .build()
