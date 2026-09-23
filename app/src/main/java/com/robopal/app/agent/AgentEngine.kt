@@ -12,6 +12,9 @@ class AgentEngine(
     private val _state = MutableStateFlow(AgentState.IDLE)
     val state: StateFlow<AgentState> = _state.asStateFlow()
 
+    private val _agentMessages = MutableStateFlow<List<Message>>(emptyList())
+    val agentMessages: StateFlow<List<Message>> = _agentMessages.asStateFlow()
+
     private val messages = mutableListOf<Message>()
 
     companion object {
@@ -22,6 +25,7 @@ class AgentEngine(
 
     fun clearHistory() {
         messages.clear()
+        _agentMessages.value = emptyList()
         _state.value = AgentState.IDLE
         Logger.clearLogs()
     }
@@ -30,9 +34,12 @@ class AgentEngine(
         _state.value = AgentState.WORKING
 
         if (messages.isEmpty()) {
-            messages.add(Message(role = "system", content = SYSTEM_PROMPT))
+            val sysMsg = Message(role = "system", content = SYSTEM_PROMPT)
+            messages.add(sysMsg)
         }
-        messages.add(Message(role = "user", content = goal))
+        val userMsg = Message(role = "user", content = goal)
+        messages.add(userMsg)
+        _agentMessages.value = messages.toList()
 
         var iterations = 0
         var completed = false
@@ -44,12 +51,12 @@ class AgentEngine(
             val response = try {
                 llmProvider.generateResponse(messages, toolRegistry.getAllTools())
             } catch (e: Exception) {
-                messages.add(
-                    Message(
-                        role = "assistant",
-                        content = "Error al comunicarse con el LLM: ${e.localizedMessage ?: e.message}"
-                    )
+                val errMsg = Message(
+                    role = "assistant",
+                    content = "Error al comunicarse con el LLM: ${e.localizedMessage ?: e.message}"
                 )
+                messages.add(errMsg)
+                _agentMessages.value = messages.toList()
                 _state.value = AgentState.ERROR
                 return
             }
@@ -57,25 +64,34 @@ class AgentEngine(
             val assistantContent = response.content ?: ""
             val toolCalls = response.toolCalls
 
-            messages.add(
-                Message(
-                    role = "assistant",
-                    content = assistantContent,
-                    toolCalls = toolCalls
-                )
+            val assistMsg = Message(
+                role = "assistant",
+                content = assistantContent,
+                toolCalls = toolCalls
             )
+            messages.add(assistMsg)
+            _agentMessages.value = messages.toList()
 
             if (!toolCalls.isNullOrEmpty()) {
                 _state.value = AgentState.WORKING
                 for (toolCall in toolCalls) {
-                    val result = toolRegistry.executeTool(toolCall.name, toolCall.arguments)
-                    messages.add(
-                        Message(
-                            role = "tool",
-                            content = result,
-                            toolCallId = toolCall.id
-                        )
+                    // Emitir mensaje/banner de estado previo a la ejecución
+                    val bannerMsg = Message(
+                        role = "assistant",
+                        content = "Ejecutando: ${toolCall.name} con parámetros: ${toolCall.arguments}"
                     )
+                    messages.add(bannerMsg)
+                    _agentMessages.value = messages.toList()
+
+                    val result = toolRegistry.executeTool(toolCall.name, toolCall.arguments)
+
+                    val toolResultMsg = Message(
+                        role = "tool",
+                        content = result,
+                        toolCallId = toolCall.id
+                    )
+                    messages.add(toolResultMsg)
+                    _agentMessages.value = messages.toList()
                 }
             } else {
                 completed = true

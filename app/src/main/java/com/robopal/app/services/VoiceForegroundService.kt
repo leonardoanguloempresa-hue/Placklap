@@ -9,7 +9,6 @@ import android.os.Build
 import android.os.IBinder
 import android.util.Log
 import com.robopal.app.RoboPalApplication
-import com.robopal.app.managers.PorcupineManager
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -25,16 +24,11 @@ class VoiceForegroundService : Service() {
     }
 
     private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
-    private var porcupineManager: PorcupineManager? = null
 
     override fun onCreate() {
         super.onCreate()
         createNotificationChannel()
         startForeground(NOTIFICATION_ID, buildNotification())
-
-        porcupineManager = PorcupineManager(this) {
-            onHotwordDetected()
-        }
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
@@ -44,7 +38,7 @@ class VoiceForegroundService : Service() {
 
     override fun onDestroy() {
         super.onDestroy()
-        porcupineManager?.stop()
+        RoboPalApplication.voskManager.stopContinuousListening()
         serviceScope.cancel()
     }
 
@@ -53,23 +47,24 @@ class VoiceForegroundService : Service() {
     }
 
     fun startListening() {
-        Log.d(TAG, "VoiceForegroundService: Escuchando activamente palabra clave 'Robot'.")
-        porcupineManager?.start()
+        Log.d(TAG, "VoiceForegroundService: Escuchando continuamente por el comando 'Silf'.")
+        RoboPalApplication.voskManager.startContinuousListening { prompt ->
+            onSilfCommandDetected(prompt)
+        }
     }
 
-    private fun onHotwordDetected() {
-        Log.d(TAG, "Palabra clave 'Robot' detectada. Transcribiendo comando con Vosk...")
+    private fun onSilfCommandDetected(prompt: String) {
+        Log.d(TAG, "Comando 'Silf' detectado con prompt: $prompt")
         serviceScope.launch {
-            val audioBytes = ByteArray(0)
-            val userText = RoboPalApplication.voskManager.transcribeAudio(audioBytes)
-
-            if (userText.isNotBlank()) {
-                Log.d(TAG, "Iniciando bucle de agente con texto: $userText")
-                RoboPalApplication.agentEngine.agentLoop(userText)
-
-                val summary = "Comando completado por RoboPal."
-                RoboPalApplication.ttsManager.speak(summary)
+            if (!RoboPalApplication.llmManager.isModelAvailable()) {
+                val warning = "Por favor selecciona y descarga un modelo GGUF antes de dar comandos."
+                RoboPalApplication.ttsManager.speak(warning)
+                return@launch
             }
+
+            RoboPalApplication.agentEngine.agentLoop(prompt)
+            val summary = "Comando procesado por RoboPal."
+            RoboPalApplication.ttsManager.speak(summary)
         }
     }
 
@@ -80,7 +75,7 @@ class VoiceForegroundService : Service() {
                 "Servicio de Voz de RoboPal",
                 NotificationManager.IMPORTANCE_LOW
             ).apply {
-                description = "Canal persistente para el reconocimiento y servicio de voz del agente RoboPal."
+                description = "Canal persistente para el reconocimiento de comando 'Silf' de RoboPal."
             }
             val manager = getSystemService(NotificationManager::class.java)
             manager?.createNotificationChannel(channel)
@@ -96,8 +91,8 @@ class VoiceForegroundService : Service() {
         }
 
         return builder
-            .setContentTitle("RoboPal - Agente Activo")
-            .setContentText("Escuchando palabra clave 'Robot'...")
+            .setContentTitle("RoboPal - Escuchando 'Silf'")
+            .setContentText("Di 'Silf' seguido de tu comando...")
             .setSmallIcon(android.R.drawable.ic_dialog_info)
             .setOngoing(true)
             .build()
