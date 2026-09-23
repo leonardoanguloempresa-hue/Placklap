@@ -1,5 +1,6 @@
 package com.robopal.app.agent
 
+import com.robopal.app.managers.Logger
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -11,17 +12,26 @@ class AgentEngine(
     private val _state = MutableStateFlow(AgentState.IDLE)
     val state: StateFlow<AgentState> = _state.asStateFlow()
 
+    private val messages = mutableListOf<Message>()
+
     companion object {
         const val SYSTEM_PROMPT =
             "Eres RoboPal, un agente de automatización de Android. Tu trabajo es cumplir la meta del usuario usando tus herramientas. Planifica pasos cortos, ejecuta UNA herramienta a la vez, observa el resultado y decide el siguiente paso. Cuando termines, responde con un resumen breve en español. NUNCA inventes resultados de herramientas."
         private const val MAX_ITERATIONS = 15
     }
 
+    fun clearHistory() {
+        messages.clear()
+        _state.value = AgentState.IDLE
+        Logger.clearLogs()
+    }
+
     suspend fun agentLoop(goal: String) {
         _state.value = AgentState.WORKING
 
-        val messages = mutableListOf<Message>()
-        messages.add(Message(role = "system", content = SYSTEM_PROMPT))
+        if (messages.isEmpty()) {
+            messages.add(Message(role = "system", content = SYSTEM_PROMPT))
+        }
         messages.add(Message(role = "user", content = goal))
 
         var iterations = 0

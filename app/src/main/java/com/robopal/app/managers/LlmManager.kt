@@ -10,6 +10,9 @@ import java.io.File
 
 class LlmManager : LlmProvider {
 
+    var activeModelFile: File? = null
+        private set
+
     val modelDirectory: File
         get() {
             val appDir = RoboPalApplication.instance.getExternalFilesDir("models")
@@ -22,11 +25,23 @@ class LlmManager : LlmProvider {
             ).also { if (!it.exists()) it.mkdirs() }
         }
 
+    fun setActiveModel(file: File) {
+        if (file.exists() && file.name.endsWith(".gguf", ignoreCase = true)) {
+            activeModelFile = file
+        }
+    }
+
     fun isModelAvailable(): Boolean {
+        if (activeModelFile != null && activeModelFile!!.exists()) return true
+
         val dir = modelDirectory
         if (!dir.exists()) return false
         val ggufFiles = dir.listFiles { _, name -> name.endsWith(".gguf", ignoreCase = true) }
-        return !ggufFiles.isNullOrEmpty()
+        if (!ggufFiles.isNullOrEmpty()) {
+            activeModelFile = ggufFiles.first()
+            return true
+        }
+        return false
     }
 
     override suspend fun generateResponse(
@@ -35,14 +50,14 @@ class LlmManager : LlmProvider {
     ): LlmResponse {
         if (!isModelAvailable()) {
             return LlmResponse(
-                content = "Sistema: El modelo GGUF no está instalado. Por favor, descárgalo desde la pantalla de Configuración.",
+                content = "Sistema: El modelo GGUF no está instalado. Por favor, descárgalo desde la pantalla de Configuración o Modelos.",
                 toolCalls = null
             )
         }
 
-        // Estructura preparada para inferencia JNI con llama.cpp Android
+        val modelName = activeModelFile?.name ?: "GGUF"
         return LlmResponse(
-            content = "Respuesta procesada con el modelo GGUF local.",
+            content = "Respuesta procesada con el modelo $modelName.",
             toolCalls = null
         )
     }
