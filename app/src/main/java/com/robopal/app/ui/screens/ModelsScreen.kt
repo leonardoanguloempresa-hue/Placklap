@@ -1,6 +1,7 @@
 package com.robopal.app.ui.screens
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -10,6 +11,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -50,9 +52,10 @@ import androidx.compose.ui.unit.sp
 import com.robopal.app.RoboPalApplication
 import com.robopal.app.managers.HuggingFaceClient
 import com.robopal.app.managers.HuggingFaceModel
-import com.robopal.app.ui.theme.DarkBackground
+import com.robopal.app.ui.theme.DarkCard
+import com.robopal.app.ui.theme.PureBlack
 import com.robopal.app.ui.theme.RobotPrimary
-import com.robopal.app.ui.theme.SurfaceDark
+import com.robopal.app.ui.theme.SubtleBorder
 import com.robopal.app.ui.theme.TextPrimary
 import com.robopal.app.ui.theme.TextSecondary
 import kotlinx.coroutines.launch
@@ -69,14 +72,12 @@ fun ModelsScreen(
     var selectedTabIndex by remember { mutableStateOf(0) }
     val tabs = listOf("Explorador HuggingFace", "Modelos Descargados")
 
-    // Estado del explorador
     var searchQuery by remember { mutableStateOf("qwen") }
     var searchResults by remember { mutableStateOf<List<HuggingFaceModel>>(emptyList()) }
     var isSearching by remember { mutableStateOf(false) }
     var downloadingRepoId by remember { mutableStateOf<String?>(null) }
     var statusMessage by remember { mutableStateOf("") }
 
-    // Estado de modelos locales
     var localGgufFiles by remember { mutableStateOf<List<File>>(emptyList()) }
     var activeModelName by remember { mutableStateOf("") }
 
@@ -105,21 +106,21 @@ fun ModelsScreen(
     Column(
         modifier = modifier
             .fillMaxSize()
-            .background(DarkBackground)
+            .background(PureBlack)
             .padding(16.dp)
     ) {
         Text(
-            text = "Gestor de Modelos GGUF",
-            fontSize = 20.sp,
+            text = "Modelos GGUF",
+            fontSize = 22.sp,
             fontWeight = FontWeight.Bold,
             color = TextPrimary,
-            modifier = Modifier.padding(bottom = 12.dp)
+            modifier = Modifier.padding(bottom = 16.dp)
         )
 
-        // Pestañas
+        // Pestañas minimalistas
         TabRow(
             selectedTabIndex = selectedTabIndex,
-            containerColor = SurfaceDark,
+            containerColor = PureBlack,
             contentColor = TextPrimary,
             indicator = { tabPositions ->
                 TabRowDefaults.Indicator(
@@ -135,38 +136,39 @@ fun ModelsScreen(
                         selectedTabIndex = index
                         if (index == 1) refreshLocalModels()
                     },
-                    text = { Text(title, fontWeight = FontWeight.Medium) }
+                    text = { Text(title, fontWeight = FontWeight.Medium, fontSize = 13.sp) }
                 )
             }
         }
 
-        Spacer(modifier = Modifier.height(12.dp))
+        Spacer(modifier = Modifier.height(16.dp))
 
-        // Barra/Detalle de Progreso Real de Descarga
+        // Barra de progreso real de descarga
         val progressInfo = downloadProgressState
         if (progressInfo != null && !progressInfo.isCompleted && progressInfo.error == null) {
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .clip(RoundedCornerShape(8.dp))
-                    .background(SurfaceDark)
-                    .padding(8.dp)
+                    .clip(RoundedCornerShape(16.dp))
+                    .background(DarkCard)
+                    .border(1.dp, SubtleBorder, RoundedCornerShape(16.dp))
+                    .padding(12.dp)
             ) {
                 Text(
-                    text = "Descargando ${progressInfo.fileName}: ${progressInfo.percentage}% (${progressInfo.bytesDownloaded / (1024 * 1024)}MB / ${progressInfo.totalBytes / (1024 * 1024)}MB)",
+                    text = "Descargando ${progressInfo.fileName}: ${progressInfo.percentage}%",
                     color = RobotPrimary,
                     fontSize = 12.sp,
                     fontWeight = FontWeight.Bold
                 )
-                Spacer(modifier = Modifier.height(4.dp))
+                Spacer(modifier = Modifier.height(6.dp))
                 LinearProgressIndicator(
                     progress = progressInfo.percentage / 100f,
                     modifier = Modifier.fillMaxWidth(),
                     color = RobotPrimary,
-                    trackColor = DarkBackground
+                    trackColor = PureBlack
                 )
             }
-            Spacer(modifier = Modifier.height(8.dp))
+            Spacer(modifier = Modifier.height(12.dp))
         }
 
         if (statusMessage.isNotBlank()) {
@@ -180,28 +182,30 @@ fun ModelsScreen(
 
         when (selectedTabIndex) {
             0 -> {
-                // Explorador HuggingFace
+                // Explorador en forma de píldora
                 Row(
-                    modifier = Modifier.fillMaxWidth(),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(50))
+                        .background(DarkCard)
+                        .border(1.dp, SubtleBorder, RoundedCornerShape(50))
+                        .padding(horizontal = 8.dp, vertical = 4.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     OutlinedTextField(
                         value = searchQuery,
                         onValueChange = { searchQuery = it },
-                        placeholder = { Text("Buscar modelos GGUF...", color = TextSecondary) },
+                        placeholder = { Text("Buscar modelos GGUF...", color = TextSecondary, fontSize = 14.sp) },
                         modifier = Modifier.weight(1f),
-                        shape = RoundedCornerShape(24.dp),
                         colors = OutlinedTextFieldDefaults.colors(
-                            focusedBorderColor = RobotPrimary,
-                            unfocusedBorderColor = SurfaceDark,
-                            focusedContainerColor = SurfaceDark,
-                            unfocusedContainerColor = SurfaceDark,
+                            focusedBorderColor = androidx.compose.ui.graphics.Color.Transparent,
+                            unfocusedBorderColor = androidx.compose.ui.graphics.Color.Transparent,
+                            focusedContainerColor = androidx.compose.ui.graphics.Color.Transparent,
+                            unfocusedContainerColor = androidx.compose.ui.graphics.Color.Transparent,
                             focusedTextColor = TextPrimary,
                             unfocusedTextColor = TextPrimary
                         )
                     )
-
-                    Spacer(modifier = Modifier.width(8.dp))
 
                     IconButton(
                         onClick = {
@@ -214,18 +218,20 @@ fun ModelsScreen(
                             }
                         },
                         modifier = Modifier
+                            .size(36.dp)
                             .clip(RoundedCornerShape(50))
                             .background(RobotPrimary)
                     ) {
                         Icon(
                             imageVector = Icons.Default.Search,
                             contentDescription = "Buscar",
-                            tint = TextPrimary
+                            tint = TextPrimary,
+                            modifier = Modifier.size(18.dp)
                         )
                     }
                 }
 
-                Spacer(modifier = Modifier.height(12.dp))
+                Spacer(modifier = Modifier.height(16.dp))
 
                 if (isSearching) {
                     Column(
@@ -240,7 +246,7 @@ fun ModelsScreen(
                     Text("No se encontraron modelos con '$searchQuery'.", color = TextSecondary)
                 } else {
                     LazyColumn(
-                        verticalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalArrangement = Arrangement.spacedBy(10.dp),
                         modifier = Modifier.fillMaxSize()
                     ) {
                         items(searchResults) { model ->
@@ -271,7 +277,6 @@ fun ModelsScreen(
                 }
             }
             1 -> {
-                // Lista de Modelos Descargados
                 if (localGgufFiles.isEmpty()) {
                     Text(
                         text = "Aún no hay modelos .gguf descargados en el dispositivo.",
@@ -280,7 +285,7 @@ fun ModelsScreen(
                     )
                 } else {
                     LazyColumn(
-                        verticalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalArrangement = Arrangement.spacedBy(10.dp),
                         modifier = Modifier.fillMaxSize()
                     ) {
                         items(localGgufFiles) { file ->
@@ -308,14 +313,16 @@ fun HuggingFaceModelCard(
     onDownload: () -> Unit
 ) {
     Card(
-        modifier = Modifier.fillMaxWidth(),
-        colors = CardDefaults.cardColors(containerColor = SurfaceDark),
-        shape = RoundedCornerShape(12.dp)
+        modifier = Modifier
+            .fillMaxWidth()
+            .border(1.dp, SubtleBorder, RoundedCornerShape(16.dp)),
+        colors = CardDefaults.cardColors(containerColor = DarkCard),
+        shape = RoundedCornerShape(16.dp)
     ) {
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(12.dp),
+                .padding(14.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
             Column(modifier = Modifier.weight(1f)) {
@@ -337,14 +344,14 @@ fun HuggingFaceModelCard(
                 onClick = onDownload,
                 enabled = !isDownloading,
                 colors = ButtonDefaults.buttonColors(containerColor = RobotPrimary),
-                shape = RoundedCornerShape(20.dp)
+                shape = RoundedCornerShape(50)
             ) {
                 if (isDownloading) {
-                    CircularProgressIndicator(color = TextPrimary, modifier = Modifier.height(16.dp).width(16.dp), strokeWidth = 2.dp)
+                    CircularProgressIndicator(color = TextPrimary, modifier = Modifier.size(16.dp), strokeWidth = 2.dp)
                 } else {
-                    Icon(imageVector = Icons.Default.Download, contentDescription = "Descargar")
+                    Icon(imageVector = Icons.Default.Download, contentDescription = "Descargar", modifier = Modifier.size(16.dp))
                     Spacer(modifier = Modifier.width(4.dp))
-                    Text("Descargar", fontSize = 12.sp)
+                    Text("Obtener", fontSize = 12.sp)
                 }
             }
         }
@@ -360,16 +367,16 @@ fun LocalModelCard(
     Card(
         modifier = Modifier
             .fillMaxWidth()
+            .clip(RoundedCornerShape(16.dp))
+            .border(1.dp, if (isActive) RobotPrimary else SubtleBorder, RoundedCornerShape(16.dp))
             .clickable { onSelect() },
-        colors = CardDefaults.cardColors(
-            containerColor = if (isActive) RobotPrimary.copy(alpha = 0.25f) else SurfaceDark
-        ),
-        shape = RoundedCornerShape(12.dp)
+        colors = CardDefaults.cardColors(containerColor = DarkCard),
+        shape = RoundedCornerShape(16.dp)
     ) {
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(12.dp),
+                .padding(14.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
             Column(modifier = Modifier.weight(1f)) {
@@ -397,8 +404,8 @@ fun LocalModelCard(
             } else {
                 Button(
                     onClick = onSelect,
-                    colors = ButtonDefaults.buttonColors(containerColor = SurfaceDark),
-                    shape = RoundedCornerShape(20.dp)
+                    colors = ButtonDefaults.buttonColors(containerColor = PureBlack),
+                    shape = RoundedCornerShape(50)
                 ) {
                     Text("Activar", fontSize = 12.sp, color = TextPrimary)
                 }

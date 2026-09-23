@@ -1,8 +1,8 @@
 package com.robopal.app.ui.screens
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -18,9 +18,10 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.robopal.app.ui.theme.DarkBackground
+import com.robopal.app.ui.theme.DarkCard
+import com.robopal.app.ui.theme.PureBlack
 import com.robopal.app.ui.theme.RobotPrimary
-import com.robopal.app.ui.theme.SurfaceDark
+import com.robopal.app.ui.theme.SubtleBorder
 import com.robopal.app.ui.theme.TextPrimary
 import com.robopal.app.ui.theme.TextSecondary
 
@@ -39,29 +40,23 @@ fun LogsScreen(
     Column(
         modifier = modifier
             .fillMaxSize()
-            .background(DarkBackground)
+            .background(PureBlack)
             .padding(16.dp)
     ) {
         Text(
-            text = "Registro de Herramientas (Logs)",
-            fontSize = 20.sp,
+            text = "Registro de Herramientas",
+            fontSize = 22.sp,
             fontWeight = FontWeight.Bold,
             color = TextPrimary,
-            modifier = Modifier.padding(bottom = 12.dp)
+            modifier = Modifier.padding(bottom = 16.dp)
         )
 
         if (logs.isEmpty()) {
-            Box(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .padding(24.dp)
-            ) {
-                Text(
-                    text = "Aún no se ha ejecutado ninguna herramienta.",
-                    color = TextSecondary,
-                    fontSize = 14.sp
-                )
-            }
+            Text(
+                text = "Aún no se ha ejecutado ninguna herramienta.",
+                color = TextSecondary,
+                fontSize = 14.sp
+            )
         } else {
             LazyColumn(
                 verticalArrangement = Arrangement.spacedBy(10.dp),
@@ -80,9 +75,10 @@ fun LogCard(log: ToolLogItem) {
     Column(
         modifier = Modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(12.dp))
-            .background(SurfaceDark)
-            .padding(12.dp)
+            .clip(RoundedCornerShape(16.dp))
+            .background(DarkCard)
+            .border(1.dp, SubtleBorder, RoundedCornerShape(16.dp))
+            .padding(14.dp)
     ) {
         Text(
             text = "[${log.timestamp}] ${log.toolName}",
@@ -92,7 +88,7 @@ fun LogCard(log: ToolLogItem) {
             fontFamily = FontFamily.Monospace
         )
         Text(
-            text = "Argumentos: ${log.args}",
+            text = "Parámetros: ${log.args}",
             fontSize = 12.sp,
             color = TextSecondary,
             fontFamily = FontFamily.Monospace,
