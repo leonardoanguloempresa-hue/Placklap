@@ -4,6 +4,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.List
+import androidx.compose.material.icons.filled.Psychology
 import androidx.compose.material.icons.filled.QuestionAnswer
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.Icon
@@ -32,6 +33,7 @@ import com.robopal.app.managers.Logger
 import com.robopal.app.ui.screens.ChatScreen
 import com.robopal.app.ui.screens.HomeScreen
 import com.robopal.app.ui.screens.LogsScreen
+import com.robopal.app.ui.screens.ModelsScreen
 import com.robopal.app.ui.screens.SettingsScreen
 import com.robopal.app.ui.theme.DarkBackground
 import com.robopal.app.ui.theme.RobotPrimary
@@ -43,6 +45,7 @@ import kotlinx.coroutines.launch
 sealed class NavRoute(val route: String, val title: String, val icon: ImageVector) {
     object Home : NavRoute("home", "Robot", Icons.Default.Home)
     object Chat : NavRoute("chat", "Chat", Icons.Default.QuestionAnswer)
+    object Models : NavRoute("models", "Modelos", Icons.Default.Psychology)
     object Settings : NavRoute("settings", "Ajustes", Icons.Default.Settings)
     object Logs : NavRoute("logs", "Logs", Icons.Default.List)
 }
@@ -59,11 +62,11 @@ fun NavGraph(
     val items = listOf(
         NavRoute.Home,
         NavRoute.Chat,
+        NavRoute.Models,
         NavRoute.Settings,
         NavRoute.Logs
     )
 
-    // Historial y logs para la UI
     val chatMessages = remember { mutableStateListOf<Message>() }
     val toolLogs by Logger.logs.collectAsState()
     val lastMessage = chatMessages.lastOrNull { it.role == "assistant" }?.content
@@ -124,6 +127,9 @@ fun NavGraph(
                         }
                     }
                 )
+            }
+            composable(NavRoute.Models.route) {
+                ModelsScreen()
             }
             composable(NavRoute.Settings.route) {
                 SettingsScreen()
