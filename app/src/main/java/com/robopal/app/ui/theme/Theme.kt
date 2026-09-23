@@ -7,8 +7,8 @@ import androidx.compose.runtime.Composable
 private val DarkColorScheme = darkColorScheme(
     primary = RobotPrimary,
     secondary = RobotSecondary,
-    background = DarkBackground,
-    surface = SurfaceDark,
+    background = PureBlack,
+    surface = DarkSurface,
     error = RobotError,
     onPrimary = TextPrimary,
     onSecondary = TextPrimary,

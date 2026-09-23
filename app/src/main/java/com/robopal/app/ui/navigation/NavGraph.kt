@@ -16,8 +16,6 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateListOf
-import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
@@ -28,16 +26,15 @@ import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import com.robopal.app.agent.AgentEngine
 import com.robopal.app.agent.AgentState
-import com.robopal.app.agent.Message
 import com.robopal.app.managers.Logger
 import com.robopal.app.ui.screens.ChatScreen
 import com.robopal.app.ui.screens.HomeScreen
 import com.robopal.app.ui.screens.LogsScreen
 import com.robopal.app.ui.screens.ModelsScreen
 import com.robopal.app.ui.screens.SettingsScreen
-import com.robopal.app.ui.theme.DarkBackground
+import com.robopal.app.ui.theme.DarkCard
+import com.robopal.app.ui.theme.PureBlack
 import com.robopal.app.ui.theme.RobotPrimary
-import com.robopal.app.ui.theme.SurfaceDark
 import com.robopal.app.ui.theme.TextPrimary
 import com.robopal.app.ui.theme.TextSecondary
 import kotlinx.coroutines.launch
@@ -74,7 +71,7 @@ fun NavGraph(
     Scaffold(
         bottomBar = {
             NavigationBar(
-                containerColor = SurfaceDark,
+                containerColor = DarkCard,
                 contentColor = TextPrimary
             ) {
                 val navBackStackEntry by navController.currentBackStackEntryAsState()
@@ -88,7 +85,7 @@ fun NavGraph(
                         colors = NavigationBarItemDefaults.colors(
                             selectedIconColor = RobotPrimary,
                             selectedTextColor = RobotPrimary,
-                            indicatorColor = DarkBackground,
+                            indicatorColor = PureBlack,
                             unselectedIconColor = TextSecondary,
                             unselectedTextColor = TextSecondary
                         ),
@@ -118,7 +115,6 @@ fun NavGraph(
                 )
             }
             composable(NavRoute.Chat.route) {
-                val liveAgentMessages by agentEngine.agentMessages.collectAsState()
                 ChatScreen(
                     agentState = agentState,
                     messages = liveAgentMessages,
