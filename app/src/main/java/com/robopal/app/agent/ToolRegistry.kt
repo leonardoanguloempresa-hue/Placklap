@@ -13,6 +13,7 @@ import com.robopal.app.agent.tools.ReadScreenTool
 import com.robopal.app.agent.tools.SwipeTool
 import com.robopal.app.agent.tools.TakeScreenshotTool
 import com.robopal.app.agent.tools.TapTool
+import com.robopal.app.agent.tools.ToggleFlashlightTool
 import com.robopal.app.agent.tools.TypeTextTool
 import com.robopal.app.agent.tools.VideoAddSubtitlesTool
 import com.robopal.app.agent.tools.VideoCutTool
@@ -43,6 +44,7 @@ class ToolRegistry {
         registerTool(DownloadTool())
         registerTool(OpenUrlTool())
         registerTool(TakeScreenshotTool())
+        registerTool(ToggleFlashlightTool())
     }
 
     fun registerTool(tool: Tool) {

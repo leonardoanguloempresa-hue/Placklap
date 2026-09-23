@@ -2,12 +2,13 @@ package com.robopal.app.agent.tools
 
 import android.content.Context
 import android.content.Intent
+import android.content.pm.PackageManager
 import com.robopal.app.RoboPalApplication
 import com.robopal.app.agent.Tool
 
 class OpenAppTool : Tool {
     override val name: String = "open_app"
-    override val description: String = "Abre una aplicación instalada especificando su nombre común o paquete."
+    override val description: String = "Abre una aplicación instalada especificando su nombre común o paquete de forma exacta o parcial."
     override val parameterSchema: Map<String, Any> = mapOf(
         "type" to "object",
         "properties" to mapOf(
@@ -27,7 +28,7 @@ class OpenAppTool : Tool {
             return "Error: Se debe especificar un nombre de aplicación ('appName') o paquete."
         }
 
-        // 1. Intentar por paquete explícito si se proporcionó
+        // 1. Verificar por paquete explícito si se proporcionó
         if (!explicitPackage.isNullOrBlank()) {
             val launchIntent = pm.getLaunchIntentForPackage(explicitPackage)
             if (launchIntent != null) {
@@ -37,26 +38,31 @@ class OpenAppTool : Tool {
             }
         }
 
-        // 2. Búsqueda dinámica con PackageManager por coincidencia parcial en la etiqueta de la app
-        val installedApps = pm.getInstalledApplications(0)
-        var matchedPackage: String? = null
-        var matchedLabel: String? = null
+        // 2. Producción estricta: Iterar sobre pm.getInstalledPackages(PackageManager.GET_META_DATA)
+        val installedPackages = pm.getInstalledPackages(PackageManager.GET_META_DATA)
+        var matchedPackageName: String? = null
+        var matchedAppLabel: String? = null
 
-        for (appInfo in installedApps) {
-            val label = pm.getApplicationLabel(appInfo).toString()
-            if (label.contains(appNameArg, ignoreCase = true) || appNameArg.contains(label, ignoreCase = true)) {
-                matchedPackage = appInfo.packageName
-                matchedLabel = label
+        for (pkgInfo in installedPackages) {
+            val appInfo = pkgInfo.applicationInfo ?: continue
+            val label = appInfo.loadLabel(pm).toString()
+
+            if (label.equals(appNameArg, ignoreCase = true) ||
+                label.contains(appNameArg, ignoreCase = true) ||
+                appNameArg.contains(label, ignoreCase = true)
+            ) {
+                matchedPackageName = pkgInfo.packageName
+                matchedAppLabel = label
                 break
             }
         }
 
-        if (matchedPackage != null) {
-            val launchIntent = pm.getLaunchIntentForPackage(matchedPackage)
+        if (matchedPackageName != null) {
+            val launchIntent = pm.getLaunchIntentForPackage(matchedPackageName)
             if (launchIntent != null) {
                 launchIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
                 context.startActivity(launchIntent)
-                return "Aplicación '$matchedLabel' ($matchedPackage) abierta con éxito."
+                return "Aplicación '$matchedAppLabel' ($matchedPackageName) abierta con éxito."
             }
         }
 
