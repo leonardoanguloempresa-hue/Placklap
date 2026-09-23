@@ -23,7 +23,7 @@ class VoiceForegroundService : Service() {
         private const val NOTIFICATION_ID = 1001
     }
 
-    private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
+    private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
     override fun onCreate() {
         super.onCreate()
@@ -47,31 +47,34 @@ class VoiceForegroundService : Service() {
     }
 
     fun startListening() {
-        Log.d(TAG, "VoiceForegroundService: Escuchando continuamente por la palabra clave 'Silf'.")
-        RoboPalApplication.voskManager.startContinuousListening { prompt ->
-            onSilfCommandDetected(prompt)
+        Log.d(TAG, "VoiceForegroundService: Iniciando bucle de escucha activa del comando 'Silf' en Dispatchers.IO.")
+        serviceScope.launch(Dispatchers.IO) {
+            RoboPalApplication.voskManager.startContinuousListening { prompt ->
+                onSilfCommandDetected(prompt)
+            }
         }
     }
 
     private fun onSilfCommandDetected(prompt: String) {
         Log.d(TAG, "Comando 'Silf' detectado con prompt: $prompt")
-        serviceScope.launch {
-            // Invocación estilo Google Assistant: No abrir la actividad principal, solo desplegar la burbuja flotante
+        serviceScope.launch(Dispatchers.Main) {
+            // 1. Mostrar la cara flotante
             OverlayService.instance?.showFace()
 
-            // Capturar el contexto de pantalla actual
+            // 2. Obtener el contexto de pantalla actual
             val screenContext = AgentAccessibilityService.instance?.readScreenState() ?: "Sin información de pantalla"
             val pkgName = AgentAccessibilityService.instance?.activePackageName ?: "Desconocida"
 
-            val fullGoalWithContext = "Usuario en la aplicación '$pkgName'. Contexto visible en pantalla:\n$screenContext\nInstrucción del usuario: $prompt"
+            val fullGoalWithContext = "Usuario en la aplicación '$pkgName'. Contexto de pantalla:\n$screenContext\nInstrucción del usuario: $prompt"
 
+            // 3. Verificar disponibilidad del modelo
             if (!RoboPalApplication.llmManager.isModelAvailable()) {
                 val warning = "Por favor selecciona y descarga un modelo GGUF en la pantalla de Modelos."
                 RoboPalApplication.ttsManager.speak(warning)
                 return@launch
             }
 
-            // Ejecutar el bucle del agente con la instrucción y el contexto de pantalla
+            // 4. Ejecutar el bucle del agente
             RoboPalApplication.agentEngine.agentLoop(fullGoalWithContext)
             val summary = "Acción completada por RoboPal."
             RoboPalApplication.ttsManager.speak(summary)
@@ -102,7 +105,7 @@ class VoiceForegroundService : Service() {
 
         return builder
             .setContentTitle("RoboPal - Escuchando 'Silf'")
-            .setContentText("Asistente listo en segundo plano...")
+            .setContentText("Micrófono activo en segundo plano...")
             .setSmallIcon(android.R.drawable.ic_dialog_info)
             .setOngoing(true)
             .build()
