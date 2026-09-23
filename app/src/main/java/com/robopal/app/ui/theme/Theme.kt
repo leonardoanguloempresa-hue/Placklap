@@ -4,13 +4,13 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.runtime.Composable
 
-private val DarkColorScheme = darkColorScheme(
-    primary = RobotPrimary,
-    secondary = RobotSecondary,
+private val StrictDarkColorScheme = darkColorScheme(
+    primary = NeutralPrimary,
+    secondary = NeutralSecondary,
     background = PureBlack,
     surface = DarkSurface,
     error = RobotError,
-    onPrimary = TextPrimary,
+    onPrimary = PureBlack,
     onSecondary = TextPrimary,
     onBackground = TextPrimary,
     onSurface = TextPrimary
@@ -21,7 +21,7 @@ fun RoboPalTheme(
     content: @Composable () -> Unit
 ) {
     MaterialTheme(
-        colorScheme = DarkColorScheme,
+        colorScheme = StrictDarkColorScheme,
         content = content
     )
 }
