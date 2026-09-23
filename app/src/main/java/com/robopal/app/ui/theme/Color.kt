@@ -10,9 +10,15 @@ val SubtleBorder = Color(0xFF2A2A2A)
 val TextPrimary = Color(0xFFF5F5F5)
 val TextSecondary = Color(0xFFA0A0A0)
 
-val RobotPrimary = Color(0xFF7B61FF)
-val RobotSecondary = Color(0xFF1A0B3D)
-val RobotGlow = Color(0xFFA594FF)
+// Neutral Minimalist Colors (Strictly No Purple)
+val NeutralPrimary = Color(0xFFE0E0E0)
+val NeutralSecondary = Color(0xFF2C2C2C)
+val NeutralGlow = Color(0xFFFFFFFF)
+
+// Robot Face State Accent Colors
+val RobotPrimary = NeutralPrimary
+val RobotSecondary = NeutralSecondary
+val RobotGlow = NeutralGlow
 val RobotOrange = Color(0xFFFF9800)
 val RobotYellow = Color(0xFFFFEB3B)
 val RobotError = Color(0xFFFF4444)

@@ -53,8 +53,8 @@ import com.robopal.app.RoboPalApplication
 import com.robopal.app.managers.HuggingFaceClient
 import com.robopal.app.managers.HuggingFaceModel
 import com.robopal.app.ui.theme.DarkCard
+import com.robopal.app.ui.theme.NeutralPrimary
 import com.robopal.app.ui.theme.PureBlack
-import com.robopal.app.ui.theme.RobotPrimary
 import com.robopal.app.ui.theme.SubtleBorder
 import com.robopal.app.ui.theme.TextPrimary
 import com.robopal.app.ui.theme.TextSecondary
@@ -117,7 +117,6 @@ fun ModelsScreen(
             modifier = Modifier.padding(bottom = 16.dp)
         )
 
-        // Pestañas minimalistas
         TabRow(
             selectedTabIndex = selectedTabIndex,
             containerColor = PureBlack,
@@ -125,7 +124,7 @@ fun ModelsScreen(
             indicator = { tabPositions ->
                 TabRowDefaults.Indicator(
                     Modifier.tabIndicatorOffset(tabPositions[selectedTabIndex]),
-                    color = RobotPrimary
+                    color = NeutralPrimary
                 )
             }
         ) {
@@ -143,7 +142,6 @@ fun ModelsScreen(
 
         Spacer(modifier = Modifier.height(16.dp))
 
-        // Barra de progreso real de descarga
         val progressInfo = downloadProgressState
         if (progressInfo != null && !progressInfo.isCompleted && progressInfo.error == null) {
             Column(
@@ -156,7 +154,7 @@ fun ModelsScreen(
             ) {
                 Text(
                     text = "Descargando ${progressInfo.fileName}: ${progressInfo.percentage}%",
-                    color = RobotPrimary,
+                    color = NeutralPrimary,
                     fontSize = 12.sp,
                     fontWeight = FontWeight.Bold
                 )
@@ -164,7 +162,7 @@ fun ModelsScreen(
                 LinearProgressIndicator(
                     progress = progressInfo.percentage / 100f,
                     modifier = Modifier.fillMaxWidth(),
-                    color = RobotPrimary,
+                    color = NeutralPrimary,
                     trackColor = PureBlack
                 )
             }
@@ -174,7 +172,7 @@ fun ModelsScreen(
         if (statusMessage.isNotBlank()) {
             Text(
                 text = statusMessage,
-                color = RobotPrimary,
+                color = NeutralPrimary,
                 fontSize = 12.sp,
                 modifier = Modifier.padding(bottom = 8.dp)
             )
@@ -182,7 +180,6 @@ fun ModelsScreen(
 
         when (selectedTabIndex) {
             0 -> {
-                // Explorador en forma de píldora
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -220,12 +217,12 @@ fun ModelsScreen(
                         modifier = Modifier
                             .size(36.dp)
                             .clip(RoundedCornerShape(50))
-                            .background(RobotPrimary)
+                            .background(NeutralPrimary)
                     ) {
                         Icon(
                             imageVector = Icons.Default.Search,
                             contentDescription = "Buscar",
-                            tint = TextPrimary,
+                            tint = PureBlack,
                             modifier = Modifier.size(18.dp)
                         )
                     }
@@ -239,7 +236,7 @@ fun ModelsScreen(
                         verticalArrangement = Arrangement.Center,
                         horizontalAlignment = Alignment.CenterHorizontally
                     ) {
-                        CircularProgressIndicator(color = RobotPrimary)
+                        CircularProgressIndicator(color = NeutralPrimary)
                         Text("Buscando en HuggingFace...", color = TextSecondary, modifier = Modifier.padding(top = 8.dp))
                     }
                 } else if (searchResults.isEmpty()) {
@@ -260,10 +257,13 @@ fun ModelsScreen(
                                         val downloadUrl = hfClient.getGgufDownloadUrl(model.id)
                                         if (downloadUrl != null) {
                                             val fileName = downloadUrl.substringAfterLast("/")
+                                            val targetFile = File(RoboPalApplication.llmManager.modelDirectory, fileName)
                                             statusMessage = "Iniciando descarga de $fileName..."
-                                            val destPath = File(RoboPalApplication.llmManager.modelDirectory, fileName).absolutePath
-                                            val result = RoboPalApplication.downloadManager.downloadFile(downloadUrl, destPath)
+                                            val result = RoboPalApplication.downloadManager.downloadFile(downloadUrl, targetFile.absolutePath)
                                             statusMessage = result
+                                            if (targetFile.exists()) {
+                                                RoboPalApplication.llmManager.loadModel(targetFile.absolutePath)
+                                            }
                                             refreshLocalModels()
                                         } else {
                                             statusMessage = "Error: No se encontró ningún archivo .gguf en el repositorio."
@@ -343,15 +343,15 @@ fun HuggingFaceModelCard(
             Button(
                 onClick = onDownload,
                 enabled = !isDownloading,
-                colors = ButtonDefaults.buttonColors(containerColor = RobotPrimary),
+                colors = ButtonDefaults.buttonColors(containerColor = NeutralPrimary, contentColor = PureBlack),
                 shape = RoundedCornerShape(50)
             ) {
                 if (isDownloading) {
-                    CircularProgressIndicator(color = TextPrimary, modifier = Modifier.size(16.dp), strokeWidth = 2.dp)
+                    CircularProgressIndicator(color = PureBlack, modifier = Modifier.size(16.dp), strokeWidth = 2.dp)
                 } else {
-                    Icon(imageVector = Icons.Default.Download, contentDescription = "Descargar", modifier = Modifier.size(16.dp))
+                    Icon(imageVector = Icons.Default.Download, contentDescription = "Descargar", modifier = Modifier.size(16.dp), tint = PureBlack)
                     Spacer(modifier = Modifier.width(4.dp))
-                    Text("Obtener", fontSize = 12.sp)
+                    Text("Obtener", fontSize = 12.sp, color = PureBlack)
                 }
             }
         }
@@ -368,7 +368,7 @@ fun LocalModelCard(
         modifier = Modifier
             .fillMaxWidth()
             .clip(RoundedCornerShape(16.dp))
-            .border(1.dp, if (isActive) RobotPrimary else SubtleBorder, RoundedCornerShape(16.dp))
+            .border(1.dp, if (isActive) NeutralPrimary else SubtleBorder, RoundedCornerShape(16.dp))
             .clickable { onSelect() },
         colors = CardDefaults.cardColors(containerColor = DarkCard),
         shape = RoundedCornerShape(16.dp)
@@ -399,7 +399,7 @@ fun LocalModelCard(
                 Icon(
                     imageVector = Icons.Default.CheckCircle,
                     contentDescription = "Modelo Activo",
-                    tint = RobotPrimary
+                    tint = NeutralPrimary
                 )
             } else {
                 Button(

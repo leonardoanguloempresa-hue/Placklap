@@ -8,6 +8,7 @@ import android.content.Intent
 import android.os.Build
 import android.os.IBinder
 import android.util.Log
+import com.robopal.app.MainActivity
 import com.robopal.app.RoboPalApplication
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -47,7 +48,7 @@ class VoiceForegroundService : Service() {
     }
 
     fun startListening() {
-        Log.d(TAG, "VoiceForegroundService: Escuchando continuamente por el comando 'Silf'.")
+        Log.d(TAG, "VoiceForegroundService: Escuchando continuamente por la palabra clave 'Silf'.")
         RoboPalApplication.voskManager.startContinuousListening { prompt ->
             onSilfCommandDetected(prompt)
         }
@@ -56,12 +57,23 @@ class VoiceForegroundService : Service() {
     private fun onSilfCommandDetected(prompt: String) {
         Log.d(TAG, "Comando 'Silf' detectado con prompt: $prompt")
         serviceScope.launch {
+            // 1. Mostrar la cara flotante
+            OverlayService.instance?.showFace()
+
+            // 2. Traer la aplicación al frente
+            val activityIntent = Intent(applicationContext, MainActivity::class.java).apply {
+                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP)
+            }
+            startActivity(activityIntent)
+
+            // 3. Verificar disponibilidad del modelo
             if (!RoboPalApplication.llmManager.isModelAvailable()) {
-                val warning = "Por favor selecciona y descarga un modelo GGUF antes de dar comandos."
+                val warning = "Por favor selecciona y descarga un modelo GGUF en la pantalla de Modelos."
                 RoboPalApplication.ttsManager.speak(warning)
                 return@launch
             }
 
+            // 4. Ejecutar el bucle del agente con la instrucción
             RoboPalApplication.agentEngine.agentLoop(prompt)
             val summary = "Comando procesado por RoboPal."
             RoboPalApplication.ttsManager.speak(summary)
@@ -72,10 +84,10 @@ class VoiceForegroundService : Service() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             val channel = NotificationChannel(
                 CHANNEL_ID,
-                "Servicio de Voz de RoboPal",
+                "Servicio de Voz Persistente RoboPal",
                 NotificationManager.IMPORTANCE_LOW
             ).apply {
-                description = "Canal persistente para el reconocimiento de comando 'Silf' de RoboPal."
+                description = "Mantiene la escucha activa continua del comando 'Silf' en segundo plano."
             }
             val manager = getSystemService(NotificationManager::class.java)
             manager?.createNotificationChannel(channel)
@@ -92,7 +104,7 @@ class VoiceForegroundService : Service() {
 
         return builder
             .setContentTitle("RoboPal - Escuchando 'Silf'")
-            .setContentText("Di 'Silf' seguido de tu comando...")
+            .setContentText("Detección activa en segundo plano...")
             .setSmallIcon(android.R.drawable.ic_dialog_info)
             .setOngoing(true)
             .build()
