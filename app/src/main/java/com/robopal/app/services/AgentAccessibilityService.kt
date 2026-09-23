@@ -28,12 +28,15 @@ class AgentAccessibilityService : AccessibilityService() {
     }
 
     override fun onAccessibilityEvent(event: AccessibilityEvent?) {
-        // Eventos procesados si se requieren en futuros bloques
+        // Eventos procesados si se requieren
     }
 
     override fun onInterrupt() {
         // Interrupción del servicio
     }
+
+    val activePackageName: String?
+        get() = rootInActiveWindow?.packageName?.toString()
 
     suspend fun tap(x: Float, y: Float): Boolean = suspendCancellableCoroutine { continuation ->
         val path = Path().apply {
@@ -93,10 +96,12 @@ class AgentAccessibilityService : AccessibilityService() {
 
     fun readScreenState(): String {
         val root = rootInActiveWindow ?: return "Error: No se pudo obtener la ventana activa de la pantalla."
+        val pkg = root.packageName?.toString() ?: "Desconocida"
         val builder = StringBuilder()
+        builder.append("App Activa: $pkg\n")
         traverseNode(root, builder)
-        return if (builder.isEmpty()) {
-            "Pantalla vacía o sin elementos de texto/accesibilidad detectables."
+        return if (builder.length <= "App Activa: $pkg\n".length) {
+            "Pantalla de app $pkg vacía o sin elementos de texto/accesibilidad detectables."
         } else {
             builder.toString().trimEnd()
         }
