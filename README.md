@@ -12,14 +12,25 @@
 
 ---
 
-## 🛠️ Requisitos y Compilación
+## 📦 Descarga del APK (CI/CD Automático)
 
-### Requisitos Prprevios
+Cada commit enviado a la rama `main` compila y genera automáticamente el ejecutable APK en la nube mediante **GitHub Actions**.
+
+Para descargar el APK ya compilado:
+1. Ve a la pestaña **Actions** en este repositorio de GitHub.
+2. Haz clic en el workflow más reciente (**Build Android APK**).
+3. En la sección **Artifacts** al final de la página, descarga el archivo `RoboPal-Debug-APK`.
+
+---
+
+## 🛠️ Requisitos y Compilación Local
+
+### Requisitos Previos
 - **Java**: JDK 17 o 21 instalado.
 - **Android SDK**: API 34 (Android 14) instalado.
 - **Gradle**: Se incluye el Gradle Wrapper oficial (Gradle 8.4).
 
-### Instrucciones de Compilación
+### Instrucciones de Compilación Local
 Para compilar el proyecto en modo debug desde la terminal:
 
 ```bash
@@ -47,4 +58,4 @@ RoboPal requiere los siguientes permisos y configuraciones del sistema:
 - **Servicio de Accesibilidad (`AgentAccessibilityService`)**: Debe habilitarse en `Ajustes > Accesibilidad > RoboPal` para ejecutar toques y leer elementos en pantalla.
 - **Teclado RoboPal (`RobotImeService`)**: Debe seleccionarse en `Ajustes > Idioma e Insumos > Teclado en pantalla` para la escritura automática de texto.
 - **Servicios en Primer Plano y Notificaciones**: Permisos `FOREGROUND_SERVICE_DATA_SYNC` y `FOREGROUND_SERVICE_MEDIA_PROJECTION` habilitados.
-- **Súperposición de Pantalla (Overlay)**: Permiso `SYSTEM_ALERT_WINDOW` para la cara flotante del robot.
+- **Superposición de Pantalla (Overlay)**: Permiso `SYSTEM_ALERT_WINDOW` para la cara flotante del robot.
