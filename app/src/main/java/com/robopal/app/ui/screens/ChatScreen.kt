@@ -28,6 +28,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -35,8 +36,10 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.robopal.app.RoboPalApplication
 import com.robopal.app.agent.AgentState
 import com.robopal.app.agent.Message
+import com.robopal.app.services.OverlayService
 import com.robopal.app.ui.robot.RobotFace
 import com.robopal.app.ui.theme.DarkCard
 import com.robopal.app.ui.theme.PureBlack
@@ -44,6 +47,7 @@ import com.robopal.app.ui.theme.RobotPrimary
 import com.robopal.app.ui.theme.SubtleBorder
 import com.robopal.app.ui.theme.TextPrimary
 import com.robopal.app.ui.theme.TextSecondary
+import kotlinx.coroutines.launch
 
 @Composable
 fun ChatScreen(
@@ -53,6 +57,7 @@ fun ChatScreen(
     modifier: Modifier = Modifier
 ) {
     var inputText by remember { mutableStateOf("") }
+    val scope = rememberCoroutineScope()
 
     Column(
         modifier = modifier
@@ -69,7 +74,7 @@ fun ChatScreen(
             modifier = Modifier.padding(bottom = 16.dp)
         )
 
-        // Conversación con flujo de texto limpio (sin burbujas pesadas)
+        // Conversación con flujo de texto limpio
         LazyColumn(
             modifier = Modifier
                 .weight(1f)
@@ -81,7 +86,7 @@ fun ChatScreen(
             }
 
             // Indicador de procesamiento con bola flotante miniatura
-            if (agentState == AgentState.THINKING || agentState == AgentState.WORKING) {
+            if (agentState == AgentState.THINKING || agentState == AgentState.WORKING || agentState == AgentState.LISTENING) {
                 item {
                     MiniRobotProcessingRow(agentState = agentState)
                 }
@@ -115,7 +120,15 @@ fun ChatScreen(
                 )
             )
 
-            IconButton(onClick = { /* Micrófono listo */ }) {
+            // Botón de micrófono manual para iniciar captura de voz del agente
+            IconButton(
+                onClick = {
+                    OverlayService.instance?.showFace()
+                    scope.launch {
+                        RoboPalApplication.agentEngine.agentLoop("Escribe un mensaje en pantalla o saluda.")
+                    }
+                }
+            ) {
                 Icon(
                     imageVector = Icons.Default.Mic,
                     contentDescription = "Micrófono",
@@ -193,8 +206,14 @@ fun MiniRobotProcessingRow(agentState: AgentState) {
 
         Spacer(modifier = Modifier.width(10.dp))
 
+        val labelText = when (agentState) {
+            AgentState.LISTENING -> "Silf está escuchando..."
+            AgentState.THINKING -> "Silf está pensando..."
+            else -> "Silf está ejecutando..."
+        }
+
         Text(
-            text = if (agentState == AgentState.THINKING) "Silf está pensando..." else "Silf está ejecutando...",
+            text = labelText,
             fontSize = 13.sp,
             color = TextSecondary
         )

@@ -8,7 +8,6 @@ import android.content.Intent
 import android.os.Build
 import android.os.IBinder
 import android.util.Log
-import com.robopal.app.MainActivity
 import com.robopal.app.RoboPalApplication
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -57,25 +56,24 @@ class VoiceForegroundService : Service() {
     private fun onSilfCommandDetected(prompt: String) {
         Log.d(TAG, "Comando 'Silf' detectado con prompt: $prompt")
         serviceScope.launch {
-            // 1. Mostrar la cara flotante
+            // Invocación estilo Google Assistant: No abrir la actividad principal, solo desplegar la burbuja flotante
             OverlayService.instance?.showFace()
 
-            // 2. Traer la aplicación al frente
-            val activityIntent = Intent(applicationContext, MainActivity::class.java).apply {
-                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP)
-            }
-            startActivity(activityIntent)
+            // Capturar el contexto de pantalla actual
+            val screenContext = AgentAccessibilityService.instance?.readScreenState() ?: "Sin información de pantalla"
+            val pkgName = AgentAccessibilityService.instance?.activePackageName ?: "Desconocida"
 
-            // 3. Verificar disponibilidad del modelo
+            val fullGoalWithContext = "Usuario en la aplicación '$pkgName'. Contexto visible en pantalla:\n$screenContext\nInstrucción del usuario: $prompt"
+
             if (!RoboPalApplication.llmManager.isModelAvailable()) {
                 val warning = "Por favor selecciona y descarga un modelo GGUF en la pantalla de Modelos."
                 RoboPalApplication.ttsManager.speak(warning)
                 return@launch
             }
 
-            // 4. Ejecutar el bucle del agente con la instrucción
-            RoboPalApplication.agentEngine.agentLoop(prompt)
-            val summary = "Comando procesado por RoboPal."
+            // Ejecutar el bucle del agente con la instrucción y el contexto de pantalla
+            RoboPalApplication.agentEngine.agentLoop(fullGoalWithContext)
+            val summary = "Acción completada por RoboPal."
             RoboPalApplication.ttsManager.speak(summary)
         }
     }
@@ -104,7 +102,7 @@ class VoiceForegroundService : Service() {
 
         return builder
             .setContentTitle("RoboPal - Escuchando 'Silf'")
-            .setContentText("Detección activa en segundo plano...")
+            .setContentText("Asistente listo en segundo plano...")
             .setSmallIcon(android.R.drawable.ic_dialog_info)
             .setOngoing(true)
             .build()
