@@ -67,9 +67,9 @@ fun NavGraph(
         NavRoute.Logs
     )
 
-    val chatMessages = remember { mutableStateListOf<Message>() }
+    val liveAgentMessages by agentEngine.agentMessages.collectAsState()
     val toolLogs by Logger.logs.collectAsState()
-    val lastMessage = chatMessages.lastOrNull { it.role == "assistant" }?.content
+    val lastMessage = liveAgentMessages.lastOrNull { it.role == "assistant" }?.content
 
     Scaffold(
         bottomBar = {
@@ -118,10 +118,11 @@ fun NavGraph(
                 )
             }
             composable(NavRoute.Chat.route) {
+                val liveAgentMessages by agentEngine.agentMessages.collectAsState()
                 ChatScreen(
-                    messages = chatMessages,
+                    agentState = agentState,
+                    messages = liveAgentMessages,
                     onSendMessage = { userGoal ->
-                        chatMessages.add(Message(role = "user", content = userGoal))
                         scope.launch {
                             agentEngine.agentLoop(userGoal)
                         }

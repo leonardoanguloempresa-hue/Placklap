@@ -7,20 +7,31 @@ class VoskManager(private val context: Context) {
 
     companion object {
         private const val TAG = "VoskManager"
+        val SILF_TRIGGERS = listOf("silf", "sil", "sylf", "self", "cilf")
     }
 
-    private var isInitialized = false
+    private var isListening = false
 
-    fun initModel(modelPath: String) {
-        Log.d(TAG, "Inicializando modelo Vosk desde $modelPath")
-        isInitialized = true
+    fun startContinuousListening(onCommandDetected: (prompt: String) -> Unit) {
+        Log.d(TAG, "Iniciando escucha continua con VoskManager.")
+        isListening = true
     }
 
-    fun transcribeAudio(audioData: ByteArray): String {
-        if (!isInitialized) {
-            Log.w(TAG, "VoskManager no está inicializado.")
-            return ""
+    fun stopContinuousListening() {
+        Log.d(TAG, "Deteniendo escucha continua.")
+        isListening = false
+    }
+
+    fun processAudioText(transcribedText: String): String? {
+        val trimmed = transcribedText.trim()
+        val lowercase = trimmed.lowercase()
+
+        for (trigger in SILF_TRIGGERS) {
+            if (lowercase.startsWith(trigger)) {
+                val prompt = trimmed.substring(trigger.length).trim()
+                return if (prompt.isBlank()) "hola" else prompt
+            }
         }
-        return "Transcripción simulada de voz."
+        return null
     }
 }
