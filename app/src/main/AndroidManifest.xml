@@ -72,6 +72,13 @@
             android:exported="false"
             android:foregroundServiceType="mediaProjection" />
 
+        <!-- Servicio Flotante Overlay -->
+        <service
+            android:name=".services.OverlayService"
+            android:enabled="true"
+            android:exported="false"
+            android:foregroundServiceType="dataSync" />
+
     </application>
 
 </manifest>
