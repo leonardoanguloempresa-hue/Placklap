@@ -13,6 +13,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withTimeoutOrNull
 
@@ -62,25 +63,21 @@ class VoiceForegroundService : Service() {
                 RoboPalApplication.voskManager.startListening(grammar = grammarList)
                 Log.i(TAG, "Vosk: 4. escuchando con gramática: $grammarList")
 
+                val triggers = listOf("silf", "sirf", "sulf", "oye silf", "hey silf", "ok silf")
+
                 RoboPalApplication.voskManager.finalText.collect { transcribedText ->
                     val lower = transcribedText.lowercase().trim()
-                    val triggers = listOf("silf", "sirf", "sulf", "oye silf", "hey silf", "ok silf")
-
                     val matchedTrigger = triggers.firstOrNull { lower.contains(it) } ?: return@collect
 
                     val comando = transcribedText.substringAfter(matchedTrigger, "").trim()
 
                     if (comando.length < 3) {
-                        Log.i(TAG, "Solo hotword. Esperando comando por 5s...")
+                        Log.i(TAG, "Solo hotword '$matchedTrigger'. Esperando comando por 5s...")
                         val siguienteComando = withTimeoutOrNull(5000L) {
-                            var capturado: String? = null
-                            RoboPalApplication.voskManager.finalText.collect { texto ->
+                            RoboPalApplication.voskManager.finalText.first { texto ->
                                 val t = texto.lowercase().trim()
-                                if (t.length > 3 && triggers.none { t.contains(it) }) {
-                                    capturado = texto
-                                }
+                                t.length > 3 && triggers.none { t.contains(it) }
                             }
-                            capturado
                         }
                         if (!siguienteComando.isNullOrBlank()) {
                             onSilfCommandDetected(siguienteComando)
