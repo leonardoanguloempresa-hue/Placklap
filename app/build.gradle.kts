@@ -1,6 +1,7 @@
 plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
+    id("com.google.devtools.ksp")
 }
 
 android {
@@ -11,12 +12,11 @@ android {
         applicationId = "com.robopal.app"
         minSdk = 26
         targetSdk = 34
-        versionCode = 1
-        versionName = "1.0"
+        versionCode = 2
+        versionName = "2.0.0"
 
-        testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
-        vectorDrawables {
-            useSupportLibrary = true
+        ndk {
+            abiFilters += listOf("arm64-v8a", "armeabi-v7a")
         }
     }
 
@@ -29,72 +29,85 @@ android {
             )
         }
     }
+
     compileOptions {
-        sourceCompatibility = JavaVersion.VERSION_1_8
-        targetCompatibility = JavaVersion.VERSION_1_8
+        sourceCompatibility = JavaVersion.VERSION_17
+        targetCompatibility = JavaVersion.VERSION_17
     }
+
     kotlinOptions {
-        jvmTarget = "1.8"
+        jvmTarget = "17"
     }
+
     buildFeatures {
         compose = true
     }
+
     composeOptions {
-        kotlinCompilerExtensionVersion = "1.5.3"
+        kotlinCompilerExtensionVersion = "1.5.14"
     }
+
     packaging {
         resources {
-            excludes += "/META-INDEX/AL2.0"
-            excludes += "/META-INDEX/LGPL2.1"
+            excludes += "/META-INF/{AL2.0,LGPL2.1}"
+        }
+        jniLibs {
+            useLegacyPackaging = true
         }
     }
 }
 
 dependencies {
-    // Jetpack Compose (BOM)
-    val composeBom = platform("androidx.compose:compose-bom:2023.10.01")
-    implementation(composeBom)
-    androidTestImplementation(composeBom)
+    // ═══════════ ANDROID CORE ═══════════
+    implementation("androidx.core:core-ktx:1.13.1")
+    implementation("androidx.appcompat:appcompat:1.7.0")
+    implementation("androidx.lifecycle:lifecycle-runtime-ktx:2.8.4")
+    implementation("androidx.lifecycle:lifecycle-service:2.8.4")
+    implementation("androidx.lifecycle:lifecycle-viewmodel-compose:2.8.4")
+    implementation("androidx.activity:activity-compose:1.9.1")
+    implementation("androidx.core:core-splashscreen:1.0.1")
 
+    // ═══════════ COMPOSE ═══════════
+    val composeBom = platform("androidx.compose:compose-bom:2024.09.00")
+    implementation(composeBom)
     implementation("androidx.compose.ui:ui")
     implementation("androidx.compose.ui:ui-graphics")
     implementation("androidx.compose.ui:ui-tooling-preview")
     implementation("androidx.compose.material3:material3")
     implementation("androidx.compose.material:material-icons-extended")
-    implementation("androidx.navigation:navigation-compose:2.7.4")
+    implementation("androidx.navigation:navigation-compose:2.7.7")
     debugImplementation("androidx.compose.ui:ui-tooling")
-    debugImplementation("androidx.compose.ui:ui-test-manifest")
 
-    // Core & Activity Compose
-    implementation("androidx.core:core-ktx:1.12.0")
-    implementation("androidx.activity:activity-compose:1.8.0")
+    // ═══════════ CORRUTINAS ═══════════
+    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.8.1")
 
-    // Coroutines & Lifecycle (ViewModel / MVVM)
-    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core:1.7.3")
-    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.7.3")
-    implementation("androidx.lifecycle:lifecycle-runtime-ktx:2.6.2")
-    implementation("androidx.lifecycle:lifecycle-service:2.6.2")
-    implementation("androidx.lifecycle:lifecycle-viewmodel-ktx:2.6.2")
-    implementation("androidx.lifecycle:lifecycle-viewmodel-compose:2.6.2")
+    // ═══════════ ROOM (historial de chat) ═══════════
+    implementation("androidx.room:room-runtime:2.6.1")
+    implementation("androidx.room:room-ktx:2.6.1")
+    ksp("androidx.room:room-compiler:2.6.1")
 
-    // OkHttp (red / descargas)
-    implementation("com.squareup.okhttp3:okhttp:4.11.0")
-    implementation("com.squareup.okhttp3:logging-interceptor:4.11.0")
+    // ═══════════ RED (descargas de modelos) ═══════════
+    implementation("com.squareup.okhttp3:okhttp:4.12.0")
+    implementation("com.squareup.okhttp3:logging-interceptor:4.12.0")
 
-    // ML Kit Text Recognition
-    implementation("com.google.mlkit:text-recognition:16.0.0")
+    // ═══════════ VOSK (reconocimiento de voz offline) ═══════════
+    implementation("com.alphacephei:vosk-android:0.3.47")
+    implementation("net.java.dev.jna:jna:5.13.0@aar")
 
-    // FFmpeg Kit
-    implementation("com.github.arthenica:ffmpeg-kit:v5.1")
+    // ═══════════ MEDIAPIPE (IA local con modelos .task) ═══════════
+    implementation("com.google.mediapipe:tasks-genai:0.10.24")
 
-    // =========================================================================
-    // Preparación para siguientes bloques (Vosk, Porcupine, llama.cpp / JNI)
-    // =========================================================================
-    // Vosk STT (Offline Speech Recognition)
-    // implementation("com.alphacephei:vosk-android:0.3.47")
+    // ═══════════ ML KIT OCR ═══════════
+    implementation("com.google.mlkit:text-recognition:16.0.1")
 
-    // Picovoice Porcupine Wake Word Engine
-    // implementation("ai.picovoice:porcupine-android:3.0.0")
+    // ═══════════ VIDEO (Media3 en vez de ffmpeg-kit deprecado) ═══════════
+    implementation("androidx.media3:media3-transformer:1.4.1")
+    implementation("androidx.media3:media3-effect:1.4.1")
+    implementation("androidx.media3:media3-common:1.4.1")
 
-    // Local LLM / llama.cpp JNI Bindings (Se configurará soporte JNI / CMake / NDK / AARs locales en bloques posteriores)
+    // ═══════════ JSON ═══════════
+    implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.7.3")
+
+    // ═══════════ LOGGING ═══════════
+    implementation("com.jakewharton.timber:timber:5.0.1")
 }
