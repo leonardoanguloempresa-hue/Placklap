@@ -23,39 +23,21 @@ class HuggingFaceClient {
     companion object {
         private const val TAG = "HuggingFaceClient"
 
-        // Lista seleccionada de modelos .task en HuggingFace
         val CURATED_MODELS = listOf(
             HuggingFaceModel(
-                name = "Qwen2.5-3B-Instruct",
-                repoId = "litert-community/Qwen2.5-3B-Instruct",
-                taskFileName = "qwen2.5_3b_instruct.task",
-                downloadUrl = "https://huggingface.co/litert-community/Qwen2.5-3B-Instruct/resolve/main/qwen2.5_3b_instruct.task",
-                sizeBytes = 2100000000L,
-                requiresLicense = false
-            ),
-            HuggingFaceModel(
-                name = "Gemma-2-2B-IT",
-                repoId = "litert-community/Gemma2-2B-IT",
-                taskFileName = "gemma2_2b_it.task",
-                downloadUrl = "https://huggingface.co/litert-community/Gemma2-2B-IT/resolve/main/gemma2_2b_it.task",
-                sizeBytes = 1800000000L,
-                requiresLicense = true,
-                licenseUrl = "https://huggingface.co/google/gemma-2-2b-it"
-            ),
-            HuggingFaceModel(
-                name = "Phi-3.5-mini-instruct",
-                repoId = "litert-community/Phi-3.5-mini-instruct",
-                taskFileName = "phi3.5_mini_instruct.task",
-                downloadUrl = "https://huggingface.co/litert-community/Phi-3.5-mini-instruct/resolve/main/phi3.5_mini_instruct.task",
-                sizeBytes = 2300000000L,
-                requiresLicense = false
-            ),
-            HuggingFaceModel(
-                name = "Qwen2.5-1.5B-Instruct",
+                name = "Qwen2.5-1.5B-Instruct (Recomendado)",
                 repoId = "litert-community/Qwen2.5-1.5B-Instruct",
-                taskFileName = "qwen2.5_1.5b_instruct.task",
-                downloadUrl = "https://huggingface.co/litert-community/Qwen2.5-1.5B-Instruct/resolve/main/qwen2.5_1.5b_instruct.task",
-                sizeBytes = 1100000000L,
+                taskFileName = "Qwen2.5-1.5B-Instruct_multi-prefill-seq_q8_ekv1280.task",
+                downloadUrl = "https://huggingface.co/litert-community/Qwen2.5-1.5B-Instruct/resolve/main/Qwen2.5-1.5B-Instruct_multi-prefill-seq_q8_ekv1280.task",
+                sizeBytes = 1597913616L,
+                requiresLicense = false
+            ),
+            HuggingFaceModel(
+                name = "Qwen2.5-1.5B-Instruct (Compacto)",
+                repoId = "litert-community/Qwen2.5-1.5B-Instruct",
+                taskFileName = "Qwen2.5-1.5B-Instruct_seq128_q8_ekv1280.task",
+                downloadUrl = "https://huggingface.co/litert-community/Qwen2.5-1.5B-Instruct/resolve/main/Qwen2.5-1.5B-Instruct_seq128_q8_ekv1280.task",
+                sizeBytes = 1567364648L,
                 requiresLicense = false
             )
         )
