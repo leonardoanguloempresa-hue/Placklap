@@ -9,6 +9,7 @@ import android.os.Build
 import android.os.IBinder
 import android.util.Log
 import com.robopal.app.RoboPalApplication
+import com.robopal.app.managers.VoskManager
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -47,26 +48,27 @@ class VoiceForegroundService : Service() {
     }
 
     fun startListening() {
-        Log.d(TAG, "VoiceForegroundService: Iniciando bucle de escucha activa del comando 'Silf' en Dispatchers.IO.")
+        Log.i(TAG, "VoiceForegroundService: 1. Iniciando servicio de escucha continua...")
         serviceScope.launch(Dispatchers.IO) {
             try {
+                Log.i(TAG, "Vosk: 1. ensureHotwordModel…")
                 val modelDir = RoboPalApplication.voskManager.ensureHotwordModel()
+                Log.i(TAG, "Vosk: 2. modelo en ${modelDir.absolutePath} — ${modelDir.listFiles()?.size ?: 0} archivos")
+
                 RoboPalApplication.voskManager.initialize(modelDir)
-                RoboPalApplication.voskManager.startListening(
-                    grammar = listOf("silf", "oye silf", "hey silf", "ok silf", "silf despierta", "[unk]")
-                )
+                Log.i(TAG, "Vosk: 3. inicializado")
+
+                val grammarList = listOf("silf", "sirf", "sulf", "sil", "solf", "oye silf", "hey silf", "ok silf", "[unk]")
+                RoboPalApplication.voskManager.startListening(grammar = grammarList)
+                Log.i(TAG, "Vosk: 4. escuchando con gramática: $grammarList")
 
                 RoboPalApplication.voskManager.finalText.collect { transcribedText ->
+                    Log.i(TAG, "Vosk: texto detectado = '$transcribedText'")
                     val lower = transcribedText.lowercase().trim()
                     if (transcribedText.length < 3) return@collect
 
-                    val validTriggers = listOf("silf", "oye silf", "hey silf", "ok silf", "silf despierta")
-                    val matchesHotword = validTriggers.any { trigger ->
-                        lower == trigger ||
-                        lower.startsWith("$trigger ") ||
-                        lower.endsWith(" $trigger") ||
-                        lower.contains(" $trigger ")
-                    }
+                    val validTriggers = listOf("silf", "sirf", "sulf", "sil", "solf", "oye silf", "hey silf", "ok silf")
+                    val matchesHotword = validTriggers.any { lower.contains(it) }
 
                     if (!matchesHotword) return@collect
 
@@ -87,7 +89,7 @@ class VoiceForegroundService : Service() {
     }
 
     private fun onSilfCommandDetected(prompt: String) {
-        Log.d(TAG, "Comando 'Silf' detectado con prompt: $prompt")
+        Log.i(TAG, "Comando 'Silf' detectado con prompt: $prompt")
         serviceScope.launch(Dispatchers.Main) {
             // 1. Mostrar la cara flotante
             OverlayService.instance?.showFace()

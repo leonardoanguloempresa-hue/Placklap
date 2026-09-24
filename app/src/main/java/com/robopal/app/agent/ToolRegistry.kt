@@ -20,6 +20,7 @@ import com.robopal.app.agent.tools.VideoCutTool
 import com.robopal.app.agent.tools.VideoMergeTool
 import com.robopal.app.agent.tools.WaitTool
 import com.robopal.app.managers.Logger
+import com.robopal.app.services.AgentAccessibilityService
 
 class ToolRegistry {
 
@@ -60,6 +61,13 @@ class ToolRegistry {
     }
 
     suspend fun executeTool(name: String, args: Map<String, Any>): String {
+        // FIX 5: Verificar que el servicio de accesibilidad esté activado antes de ejecutar herramientas
+        if (AgentAccessibilityService.instance == null && name != "wait" && name != "download" && name != "toggle_flashlight") {
+            val accError = "Sistema: El servicio de accesibilidad está desactivado. Ve a Ajustes → Accesibilidad → RoboPal y actívalo."
+            Logger.logToolExecution(name, args, accError)
+            return accError
+        }
+
         val tool = getTool(name)
             ?: run {
                 val errorMsg = "Error: Herramienta '$name' no encontrada en el catálogo."
