@@ -28,7 +28,7 @@ class VoskManager(private val context: Context) {
 
     companion object {
         private const val TAG = "VoskManager"
-        val STRICT_HOTWORD_GRAMMAR = listOf("silf", "oye silf", "hey silf", "ok silf", "silf despierta", "[unk]")
+        val STRICT_HOTWORD_GRAMMAR = listOf("silf", "sirf", "sulf", "sil", "solf", "oye silf", "hey silf", "ok silf", "[unk]")
     }
 
     private var model: Model? = null

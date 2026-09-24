@@ -4,7 +4,6 @@ import android.content.Context
 import android.util.Log
 import com.google.mediapipe.tasks.genai.llminference.LlmInference
 import com.google.mediapipe.tasks.genai.llminference.LlmInference.LlmInferenceOptions
-import com.robopal.app.RoboPalApplication
 import com.robopal.app.agent.LlmProvider
 import com.robopal.app.agent.LlmResponse
 import com.robopal.app.agent.Message
@@ -18,12 +17,14 @@ import kotlinx.coroutines.withContext
 import org.json.JSONArray
 import org.json.JSONObject
 import java.io.File
+import java.nio.charset.StandardCharsets
 import java.util.UUID
 
 class LlmManager(private val context: Context) : LlmProvider {
 
     companion object {
         private const val TAG = "LlmManager"
+        private val UTF8 = StandardCharsets.UTF_8
     }
 
     private var llmInference: LlmInference? = null
@@ -85,7 +86,8 @@ class LlmManager(private val context: Context) : LlmProvider {
         val llm = llmInference ?: throw IllegalStateException("Modelo no cargado")
         _isGenerating.value = true
         try {
-            llm.generateResponse(prompt)
+            val responseBytes = llm.generateResponse(prompt).toByteArray(UTF8)
+            String(responseBytes, UTF8)
         } finally {
             _isGenerating.value = false
         }
@@ -116,8 +118,6 @@ class LlmManager(private val context: Context) : LlmProvider {
         }
 
         val toolInstructionPrompt = """
-Para usar una herramienta, responde EXACTAMENTE:
-<tool_call>{"name":"nombre","arguments":{...}}</tool_call>
 Herramientas disponibles:
 - tap(x, y)
 - swipe(x1, y1, x2, y2, durationMs)
@@ -134,13 +134,24 @@ Herramientas disponibles:
 - download(url, outputPath)
 - open_url(url)
 - take_screenshot()
+- toggle_flashlight(enabled)
 """.trimIndent()
 
+        // FIX 1: Formateo ChatML para que MediaPipe respete las instrucciones de System
         val promptBuilder = StringBuilder()
-        promptBuilder.append("SYSTEM: $toolInstructionPrompt\n")
+        promptBuilder.append("<|im_start|>system\n")
+        promptBuilder.append("Eres RoboPal, un agente de automatización de Android.\n")
+        promptBuilder.append("$toolInstructionPrompt\n\n")
+        promptBuilder.append("REGLAS ESTRICTAS:\n")
+        promptBuilder.append("1. Si necesitas una herramienta, tu respuesta DEBE ser EXACTAMENTE: <tool_call>{\"name\":\"NOMBRE\",\"arguments\":{...}}</tool_call>\n")
+        promptBuilder.append("2. NUNCA escribas tool calls como open_app(packageName=...) — eso está PROHIBIDO.\n")
+        promptBuilder.append("3. Si no necesitas herramienta, responde solo texto normal.\n")
+        promptBuilder.append("<|im_end|>\n")
+
         for (msg in messages) {
-            promptBuilder.append("${msg.role.uppercase()}: ${msg.content}\n")
+            promptBuilder.append("<|im_start|>${msg.role}\n${msg.content}<|im_end|>\n")
         }
+        promptBuilder.append("<|im_start|>assistant\n")
 
         val rawResponseText = try {
             generateResponse(promptBuilder.toString())
@@ -151,12 +162,13 @@ Herramientas disponibles:
             )
         }
 
-        // Extracción de bloques <tool_call>...</tool_call> mediante Regex
-        val regex = Regex("<tool_call>(.*?)</tool_call>", RegexOption.DOT_MATCHES_ALL)
-        val matches = regex.findAll(rawResponseText)
         val toolCallsList = mutableListOf<ToolCall>()
 
-        for (match in matches) {
+        // 1. Parser Primario: Extracción de bloques <tool_call>...</tool_call> mediante Regex XML
+        val xmlRegex = Regex("<tool_call>(.*?)</tool_call>", RegexOption.DOT_MATCHES_ALL)
+        val xmlMatches = xmlRegex.findAll(rawResponseText)
+
+        for (match in xmlMatches) {
             val jsonContent = match.groupValues[1].trim()
             try {
                 val jsonObject = JSONObject(jsonContent)
@@ -176,10 +188,52 @@ Herramientas disponibles:
             }
         }
 
-        val cleanContent = regex.replace(rawResponseText, "").trim()
+        // FIX 2: Fallback a Parser Python si el XML no encontró nada
+        var cleanedText = xmlRegex.replace(rawResponseText, "").trim()
+
+        if (toolCallsList.isEmpty()) {
+            val pythonRegex = Regex("""(\w+)\(([^)]*)\)""")
+            val pythonMatches = pythonRegex.findAll(cleanedText)
+            for (m in pythonMatches) {
+                val name = m.groupValues[1]
+                val argsStr = m.groupValues[2]
+                val argsMap = mutableMapOf<String, Any>()
+
+                if (argsStr.isNotBlank()) {
+                    argsStr.split(",").forEach { pair ->
+                        val parts = pair.split("=", limit = 2)
+                        if (parts.size == 2) {
+                            val key = parts[0].trim()
+                            val value = parts[1].trim().trim('"', '\'')
+                            argsMap[key] = value
+                        }
+                    }
+                }
+
+                // Verificar si coincide con alguna herramienta conocida
+                val knownTools = setOf(
+                    "tap", "swipe", "long_press", "type_text", "press_back", "press_home",
+                    "press_recent", "read_screen", "read_screen_ocr", "open_app", "find_and_tap",
+                    "wait", "download", "open_url", "take_screenshot", "toggle_flashlight"
+                )
+
+                if (knownTools.contains(name)) {
+                    toolCallsList.add(
+                        ToolCall(
+                            id = UUID.randomUUID().toString(),
+                            name = name,
+                            arguments = argsMap
+                        )
+                    )
+                }
+            }
+            if (toolCallsList.isNotEmpty()) {
+                cleanedText = pythonRegex.replace(cleanedText, "").trim()
+            }
+        }
 
         return@withContext LlmResponse(
-            content = if (cleanContent.isNotBlank()) cleanContent else null,
+            content = if (cleanedText.isNotBlank()) cleanedText else null,
             toolCalls = if (toolCallsList.isNotEmpty()) toolCallsList else null
         )
     }

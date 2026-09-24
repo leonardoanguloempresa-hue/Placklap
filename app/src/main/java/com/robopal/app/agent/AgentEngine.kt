@@ -5,6 +5,7 @@ import com.robopal.app.managers.Logger
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.withTimeoutOrNull
 
 class AgentEngine(
     private val toolRegistry: ToolRegistry = ToolRegistry(),
@@ -22,6 +23,7 @@ class AgentEngine(
         const val SYSTEM_PROMPT =
             "Eres RoboPal, un agente de automatización de Android. Tu trabajo es cumplir la meta del usuario usando tus herramientas. Planifica pasos cortos, ejecuta UNA herramienta a la vez, observa el resultado y decide el siguiente paso. Cuando termines, responde con un resumen breve en español. NUNCA inventes resultados de herramientas."
         private const val MAX_ITERATIONS = 15
+        private const val AGENT_TIMEOUT_MS = 90_000L
     }
 
     fun clearHistory() {
@@ -32,6 +34,26 @@ class AgentEngine(
     }
 
     suspend fun agentLoop(goal: String) {
+        val result = withTimeoutOrNull(AGENT_TIMEOUT_MS) {
+            try {
+                agentLoopInternal(goal)
+                true
+            } catch (e: Exception) {
+                null
+            }
+        }
+
+        if (result == null) {
+            _state.value = AgentState.ERROR
+            val timeoutMsg = "No pude completar la tarea a tiempo. Intenta de nuevo."
+            val currentMsgs = _agentMessages.value.toMutableList()
+            currentMsgs.add(Message("assistant", timeoutMsg))
+            _agentMessages.value = currentMsgs
+            RoboPalApplication.ttsManager.speak(timeoutMsg)
+        }
+    }
+
+    private suspend fun agentLoopInternal(goal: String) {
         val trimmedGoal = goal.trim()
         if (trimmedGoal.length < 5) {
             val shortMsg = "No entendí, ¿puedes repetir?"
@@ -42,7 +64,6 @@ class AgentEngine(
             return
         }
 
-        // FIX C: Detectar modelo no cargado antes de arrancar
         if (!RoboPalApplication.llmManager.isReady.value) {
             _state.value = AgentState.ERROR
             val notReadyMsg = "No hay un modelo cargado. Ve a la pantalla Modelos y descarga Qwen2.5-1.5B-Instruct en formato .task."
