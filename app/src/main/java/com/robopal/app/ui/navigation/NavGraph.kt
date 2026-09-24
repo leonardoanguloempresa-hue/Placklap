@@ -16,7 +16,6 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.navigation.NavGraph.Companion.findStartDestination
@@ -37,7 +36,6 @@ import com.robopal.app.ui.theme.PureBlack
 import com.robopal.app.ui.theme.RobotPrimary
 import com.robopal.app.ui.theme.TextPrimary
 import com.robopal.app.ui.theme.TextSecondary
-import kotlinx.coroutines.launch
 
 sealed class NavRoute(val route: String, val title: String, val icon: ImageVector) {
     object Home : NavRoute("home", "Robot", Icons.Default.Home)
@@ -54,7 +52,6 @@ fun NavGraph(
     modifier: Modifier = Modifier
 ) {
     val navController = rememberNavController()
-    val scope = rememberCoroutineScope()
 
     val items = listOf(
         NavRoute.Home,
@@ -115,15 +112,7 @@ fun NavGraph(
                 )
             }
             composable(NavRoute.Chat.route) {
-                ChatScreen(
-                    agentState = agentState,
-                    messages = liveAgentMessages,
-                    onSendMessage = { userGoal ->
-                        scope.launch {
-                            agentEngine.agentLoop(userGoal)
-                        }
-                    }
-                )
+                ChatScreen()
             }
             composable(NavRoute.Models.route) {
                 ModelsScreen()

@@ -1,7 +1,9 @@
 package com.robopal.app.ui.screens
 
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.slideInVertically
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -14,18 +16,22 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Mic
-import androidx.compose.material.icons.filled.Send
-import androidx.compose.material.icons.filled.Warning
+import androidx.compose.material.icons.automirrored.filled.Send
+import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -34,168 +40,142 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
-import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import com.robopal.app.RoboPalApplication
 import com.robopal.app.agent.AgentState
 import com.robopal.app.agent.Message
-import com.robopal.app.services.OverlayService
 import com.robopal.app.ui.robot.RobotFace
-import com.robopal.app.ui.theme.DarkCard
-import com.robopal.app.ui.theme.PureBlack
-import com.robopal.app.ui.theme.RobotError
-import com.robopal.app.ui.theme.RobotPrimary
-import com.robopal.app.ui.theme.SubtleBorder
-import com.robopal.app.ui.theme.TextPrimary
-import com.robopal.app.ui.theme.TextSecondary
 import kotlinx.coroutines.launch
 
 @Composable
 fun ChatScreen(
-    agentState: AgentState,
-    messages: List<Message>,
-    onSendMessage: (String) -> Unit,
     modifier: Modifier = Modifier
 ) {
-    var inputText by remember { mutableStateOf("") }
-    val scope = rememberCoroutineScope()
-    val isModelReady by RoboPalApplication.llmManager.isReady.collectAsState()
+    val agentEngine = RoboPalApplication.agentEngine
+    val messages by agentEngine.agentMessages.collectAsState()
+    val agentState by agentEngine.state.collectAsState()
 
-    // FIX 2: Bloquear el input del chat mientras el agente trabaja
-    val isBlocked = agentState != AgentState.IDLE
+    var inputText by remember { mutableStateOf("") }
+    val listState = rememberLazyListState()
+    val coroutineScope = rememberCoroutineScope()
+
+    // Scroll al último mensaje en cada actualización
+    LaunchedEffect(messages.size) {
+        if (messages.isNotEmpty()) {
+            listState.animateScrollToItem(messages.size - 1)
+        }
+    }
 
     Column(
         modifier = modifier
             .fillMaxSize()
-            .background(PureBlack)
+            .background(Color.Black)
             .padding(16.dp)
     ) {
-        Text(
-            text = "Silf",
-            fontSize = 22.sp,
-            fontWeight = FontWeight.Bold,
-            color = TextPrimary,
-            modifier = Modifier.padding(bottom = 12.dp)
-        )
-
-        if (!isModelReady) {
+        // Cabecera con cara compacta del Robot
+        Card(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(bottom = 12.dp),
+            colors = CardDefaults.cardColors(
+                containerColor = Color(0xFF121212)
+            ),
+            shape = RoundedCornerShape(16.dp)
+        ) {
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .clip(RoundedCornerShape(12.dp))
-                    .background(RobotError.copy(alpha = 0.15f))
-                    .border(1.dp, RobotError.copy(alpha = 0.5f), RoundedCornerShape(12.dp))
                     .padding(12.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Icon(
-                    imageVector = Icons.Default.Warning,
-                    contentDescription = "Advertencia Modelo",
-                    tint = RobotError,
-                    modifier = Modifier.size(20.dp)
+                RobotFace(
+                    agentState = agentState,
+                    modifier = Modifier.size(64.dp)
                 )
-                Spacer(modifier = Modifier.width(8.dp))
-                Text(
-                    text = "⚠️ Modelo no cargado — Ve a Modelos y descarga Qwen2.5-1.5B-Instruct (.task)",
-                    fontSize = 12.sp,
-                    color = TextPrimary,
-                    fontWeight = FontWeight.Medium
-                )
-            }
-            Spacer(modifier = Modifier.height(12.dp))
-        }
-
-        LazyColumn(
-            modifier = Modifier
-                .weight(1f)
-                .fillMaxWidth(),
-            verticalArrangement = Arrangement.spacedBy(16.dp)
-        ) {
-            items(messages) { message ->
-                CleanMessageRow(message = message)
-            }
-
-            if (agentState == AgentState.THINKING || agentState == AgentState.WORKING || agentState == AgentState.LISTENING) {
-                item {
-                    MiniRobotProcessingRow(agentState = agentState)
+                Spacer(modifier = Modifier.width(16.dp))
+                Column {
+                    Text(
+                        text = "RoboPal Assistant",
+                        style = MaterialTheme.typography.titleMedium,
+                        color = Color.White
+                    )
+                    Text(
+                        text = "Estado: ${agentState.name}",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = when (agentState) {
+                            AgentState.LISTENING -> Color(0xFFFFEB3B)
+                            AgentState.THINKING, AgentState.WORKING -> Color(0xFFFF9800)
+                            AgentState.ERROR -> Color(0xFFFF1744)
+                            else -> Color(0xFFA0A0A0)
+                        }
+                    )
                 }
             }
         }
 
-        Spacer(modifier = Modifier.height(12.dp))
-
-        // Barra de entrada flotante en forma de píldora bloqueada si el agente trabaja
-        Row(
+        // Lista de chat con animación de entrada
+        LazyColumn(
+            state = listState,
             modifier = Modifier
-                .fillMaxWidth()
-                .clip(RoundedCornerShape(50))
-                .background(if (isBlocked) DarkCard.copy(alpha = 0.5f) else DarkCard)
-                .border(1.dp, SubtleBorder, RoundedCornerShape(50))
-                .padding(horizontal = 8.dp, vertical = 4.dp),
+                .weight(1f)
+                .fillMaxWidth(),
+            verticalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            itemsIndexed(messages) { index, msg ->
+                AnimatedVisibility(
+                    visible = true,
+                    enter = fadeIn() + slideInVertically(initialOffsetY = { it / 2 })
+                ) {
+                    ChatMessageBubble(message = msg)
+                }
+            }
+        }
+
+        Spacer(modifier = Modifier.height(8.dp))
+
+        // Campo de texto de entrada
+        Row(
+            modifier = Modifier.fillMaxWidth(),
             verticalAlignment = Alignment.CenterVertically
         ) {
             OutlinedTextField(
                 value = inputText,
                 onValueChange = { inputText = it },
-                enabled = !isBlocked,
-                placeholder = {
-                    Text(
-                        if (isBlocked) "Silf está procesando..." else "Escribe o di 'Silf'...",
-                        color = TextSecondary,
-                        fontSize = 14.sp
-                    )
-                },
                 modifier = Modifier.weight(1f),
+                placeholder = { Text("Escribe una instrucción a RoboPal...", color = Color.Gray) },
                 colors = OutlinedTextFieldDefaults.colors(
-                    focusedBorderColor = androidx.compose.ui.graphics.Color.Transparent,
-                    unfocusedBorderColor = androidx.compose.ui.graphics.Color.Transparent,
-                    focusedContainerColor = androidx.compose.ui.graphics.Color.Transparent,
-                    unfocusedContainerColor = androidx.compose.ui.graphics.Color.Transparent,
-                    disabledContainerColor = androidx.compose.ui.graphics.Color.Transparent,
-                    disabledBorderColor = androidx.compose.ui.graphics.Color.Transparent,
-                    focusedTextColor = TextPrimary,
-                    unfocusedTextColor = TextPrimary,
-                    disabledTextColor = TextSecondary
-                )
+                    focusedContainerColor = Color(0xFF1E1E1E),
+                    unfocusedContainerColor = Color(0xFF121212),
+                    focusedBorderColor = Color(0xFFE0E0E0),
+                    unfocusedBorderColor = Color(0xFF333333),
+                    focusedTextColor = Color.White,
+                    unfocusedTextColor = Color.White
+                ),
+                shape = RoundedCornerShape(24.dp),
+                maxLines = 3
             )
 
-            IconButton(
-                onClick = {
-                    OverlayService.instance?.showFace()
-                    scope.launch {
-                        RoboPalApplication.agentEngine.agentLoop("Escribe un mensaje en pantalla o saluda.")
-                    }
-                },
-                enabled = !isBlocked
-            ) {
-                Icon(
-                    imageVector = Icons.Default.Mic,
-                    contentDescription = "Micrófono",
-                    tint = if (isBlocked) TextSecondary.copy(alpha = 0.4f) else TextSecondary,
-                    modifier = Modifier.size(20.dp)
-                )
-            }
+            Spacer(modifier = Modifier.width(8.dp))
 
             IconButton(
                 onClick = {
                     if (inputText.isNotBlank()) {
-                        onSendMessage(inputText)
+                        val prompt = inputText
                         inputText = ""
+                        coroutineScope.launch {
+                            agentEngine.agentLoop(prompt)
+                        }
                     }
                 },
-                enabled = !isBlocked && inputText.isNotBlank(),
                 modifier = Modifier
-                    .size(36.dp)
-                    .clip(RoundedCornerShape(50))
-                    .background(if (!isBlocked && inputText.isNotBlank()) RobotPrimary else SubtleBorder)
+                    .size(48.dp)
+                    .background(Color(0xFF2A2A35), CircleShape)
             ) {
                 Icon(
-                    imageVector = Icons.Default.Send,
+                    imageVector = Icons.AutoMirrored.Filled.Send,
                     contentDescription = "Enviar",
-                    tint = TextPrimary,
-                    modifier = Modifier.size(18.dp)
+                    tint = Color.White
                 )
             }
         }
@@ -203,61 +183,39 @@ fun ChatScreen(
 }
 
 @Composable
-fun CleanMessageRow(message: Message) {
-    val senderName = when (message.role) {
-        "user" -> "Tú"
-        "assistant" -> "Silf"
-        "tool" -> "Acción Herramienta"
-        else -> message.role
-    }
+fun ChatMessageBubble(message: Message) {
+    val isUser = message.role.equals("user", ignoreCase = true)
+    val alignment = if (isUser) Alignment.CenterEnd else Alignment.CenterStart
+    val bubbleColor = if (isUser) Color(0xFF2A2A35) else Color(0xFF121212)
+    val textColor = Color.White
 
-    Column(
-        modifier = Modifier.fillMaxWidth()
+    Box(
+        modifier = Modifier.fillMaxWidth(),
+        contentAlignment = alignment
     ) {
-        Text(
-            text = senderName,
-            fontSize = 11.sp,
-            fontWeight = FontWeight.SemiBold,
-            color = if (message.role == "assistant") RobotPrimary else TextSecondary,
-            modifier = Modifier.padding(bottom = 2.dp)
-        )
-        Text(
-            text = message.content,
-            fontSize = 15.sp,
-            color = TextPrimary,
-            lineHeight = 20.sp
-        )
-    }
-}
-
-@Composable
-fun MiniRobotProcessingRow(agentState: AgentState) {
-    Row(
-        verticalAlignment = Alignment.CenterVertically,
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(vertical = 4.dp)
-    ) {
-        Box(
-            modifier = Modifier
-                .size(32.dp)
-                .clip(RoundedCornerShape(50))
+        Card(
+            colors = CardDefaults.cardColors(containerColor = bubbleColor),
+            shape = RoundedCornerShape(
+                topStart = 16.dp,
+                topEnd = 16.dp,
+                bottomStart = if (isUser) 16.dp else 4.dp,
+                bottomEnd = if (isUser) 4.dp else 16.dp
+            ),
+            modifier = Modifier.padding(horizontal = 4.dp)
         ) {
-            RobotFace(agentState = agentState)
+            Column(modifier = Modifier.padding(12.dp)) {
+                Text(
+                    text = if (isUser) "Tú" else "RoboPal",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = Color.Gray
+                )
+                Spacer(modifier = Modifier.height(4.dp))
+                Text(
+                    text = message.content,
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = textColor
+                )
+            }
         }
-
-        Spacer(modifier = Modifier.width(10.dp))
-
-        val labelText = when (agentState) {
-            AgentState.LISTENING -> "Silf está escuchando..."
-            AgentState.THINKING -> "Silf está pensando..."
-            else -> "Silf está ejecutando..."
-        }
-
-        Text(
-            text = labelText,
-            fontSize = 13.sp,
-            color = TextSecondary
-        )
     }
 }

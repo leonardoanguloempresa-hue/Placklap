@@ -9,12 +9,12 @@ import android.os.Build
 import android.os.IBinder
 import android.util.Log
 import com.robopal.app.RoboPalApplication
-import com.robopal.app.managers.VoskManager
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withTimeoutOrNull
 
 class VoiceForegroundService : Service() {
 
@@ -63,30 +63,33 @@ class VoiceForegroundService : Service() {
                 Log.i(TAG, "Vosk: 4. escuchando con gramática: $grammarList")
 
                 RoboPalApplication.voskManager.finalText.collect { transcribedText ->
-                    Log.i(TAG, "Vosk: texto detectado = '$transcribedText'")
                     val lower = transcribedText.lowercase().trim()
-                    if (transcribedText.length < 3) return@collect
+                    val triggers = listOf("silf", "sirf", "sulf", "oye silf", "hey silf", "ok silf")
 
-                    val validTriggers = listOf("silf", "sirf", "sulf", "sil", "solf", "oye silf", "hey silf", "ok silf")
-                    val matchesHotword = validTriggers.any { lower.contains(it) }
+                    val matchedTrigger = triggers.firstOrNull { lower.contains(it) } ?: return@collect
 
-                    if (!matchesHotword) return@collect
+                    val comando = transcribedText.substringAfter(matchedTrigger, "").trim()
 
-                    var prompt = transcribedText
-                    for (trigger in validTriggers) {
-                        if (lower.contains(trigger)) {
-                            prompt = transcribedText.substringAfter(trigger, "").trim()
-                            break
+                    if (comando.length < 3) {
+                        Log.i(TAG, "Solo hotword. Esperando comando por 5s...")
+                        val siguienteComando = withTimeoutOrNull(5000L) {
+                            var capturado: String? = null
+                            RoboPalApplication.voskManager.finalText.collect { texto ->
+                                val t = texto.lowercase().trim()
+                                if (t.length > 3 && triggers.none { t.contains(it) }) {
+                                    capturado = texto
+                                }
+                            }
+                            capturado
                         }
+                        if (!siguienteComando.isNullOrBlank()) {
+                            onSilfCommandDetected(siguienteComando)
+                        } else {
+                            Log.i(TAG, "Sin comando tras Silf. Volviendo a modo pasivo.")
+                        }
+                    } else {
+                        onSilfCommandDetected(comando)
                     }
-
-                    // FIX 3: Si prompt está en blanco tras remover el trigger, ignorar (no llamar al LLM ni enviar "Hola")
-                    if (prompt.isBlank()) {
-                        Log.i(TAG, "Solo hotword detectado, sin comando. Esperando siguiente frase.")
-                        return@collect
-                    }
-
-                    onSilfCommandDetected(prompt)
                 }
             } catch (e: Exception) {
                 Log.e(TAG, "Error inicializando o escuchando en VoiceForegroundService: ${e.message}", e)
@@ -97,10 +100,7 @@ class VoiceForegroundService : Service() {
     private fun onSilfCommandDetected(prompt: String) {
         Log.i(TAG, "Comando 'Silf' detectado con prompt: $prompt")
         serviceScope.launch(Dispatchers.Main) {
-            // 1. Mostrar la cara flotante
             OverlayService.instance?.showFace()
-
-            // 2. Ejecutar el bucle del agente directamente con el prompt real
             RoboPalApplication.agentEngine.agentLoop(prompt)
         }
     }

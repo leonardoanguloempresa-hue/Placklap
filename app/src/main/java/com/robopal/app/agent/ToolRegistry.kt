@@ -1,5 +1,10 @@
 package com.robopal.app.agent
 
+import android.accessibilityservice.AccessibilityServiceInfo
+import android.content.Context
+import android.util.Log
+import android.view.accessibility.AccessibilityManager
+import com.robopal.app.RoboPalApplication
 import com.robopal.app.agent.tools.DownloadTool
 import com.robopal.app.agent.tools.FindAndTapTool
 import com.robopal.app.agent.tools.LongPressTool
@@ -21,8 +26,13 @@ import com.robopal.app.agent.tools.VideoMergeTool
 import com.robopal.app.agent.tools.WaitTool
 import com.robopal.app.managers.Logger
 import com.robopal.app.services.AgentAccessibilityService
+import kotlinx.coroutines.delay
 
 class ToolRegistry {
+
+    companion object {
+        private const val TAG = "ToolRegistry"
+    }
 
     private val tools: MutableMap<String, Tool> = mutableMapOf()
 
@@ -60,12 +70,33 @@ class ToolRegistry {
         return tools.values.toList()
     }
 
+    private fun isAccessibilityEnabledBySystem(): Boolean {
+        val context = RoboPalApplication.instance
+        val am = context.getSystemService(Context.ACCESSIBILITY_SERVICE) as? AccessibilityManager ?: return false
+        val enabledServices = am.getEnabledAccessibilityServiceList(AccessibilityServiceInfo.FEEDBACK_ALL_MASK)
+        return enabledServices.any { it.resolveInfo.serviceInfo.packageName == context.packageName }
+    }
+
     suspend fun executeTool(name: String, args: Map<String, Any>): String {
-        // FIX 5: Verificar que el servicio de accesibilidad esté activado antes de ejecutar herramientas
-        if (AgentAccessibilityService.instance == null && name != "wait" && name != "download" && name != "toggle_flashlight") {
-            val accError = "Sistema: El servicio de accesibilidad está desactivado. Ve a Ajustes → Accesibilidad → RoboPal y actívalo."
-            Logger.logToolExecution(name, args, accError)
-            return accError
+        val requiresAccessibility = name != "wait" && name != "download" && name != "toggle_flashlight"
+
+        if (requiresAccessibility) {
+            var instance = AgentAccessibilityService.instance
+            val enabledBySystem = isAccessibilityEnabledBySystem()
+
+            Log.i("RoboPal", "Accesibilidad: instance=$instance, enabledBySystem=$enabledBySystem")
+
+            if (instance == null && enabledBySystem) {
+                Log.w(TAG, "Instancia perdida, esperando reconexión del sistema…")
+                delay(1000)
+                instance = AgentAccessibilityService.instance
+            }
+
+            if (instance == null) {
+                val accError = "El servicio de accesibilidad no responde. Desactívalo y actívalo de nuevo en Ajustes."
+                Logger.logToolExecution(name, args, accError)
+                return accError
+            }
         }
 
         val tool = getTool(name)
