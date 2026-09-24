@@ -1,5 +1,6 @@
 package com.robopal.app.agent
 
+import android.util.Log
 import com.robopal.app.RoboPalApplication
 import com.robopal.app.managers.Logger
 import kotlinx.coroutines.ensureActive
@@ -22,8 +23,9 @@ class AgentEngine(
     private val messages = mutableListOf<Message>()
 
     companion object {
+        private const val TAG = "AgentEngine"
         const val SYSTEM_PROMPT =
-            "Eres RoboPal, un agente de automatización de Android. Tu trabajo es cumplir la meta del usuario usando tus herramientas. Planifica pasos cortos, ejecuta UNA herramienta a la vez, observa el resultado y decide el siguiente paso. Cuando termines, responde con un resumen breve en español. NUNCA inventes resultados de herramientas."
+            "Eres RoboPal, un agente de automatización de Android. Tu trabajo es cumplir la meta del usuario usando tus herramientas."
         private const val MAX_ITERATIONS = 15
         private const val AGENT_TIMEOUT_MS = 90_000L
     }
@@ -36,28 +38,24 @@ class AgentEngine(
     }
 
     suspend fun agentLoop(goal: String) {
-        // FIX 8: Capturar cualquier crash o excepción imprevista a nivel global
         try {
             val result = withTimeoutOrNull(AGENT_TIMEOUT_MS) {
-                try {
-                    agentLoopInternal(goal)
-                    true
-                } catch (e: Exception) {
-                    null
-                }
+                agentLoopInternal(goal)
+                true
             }
 
             if (result == null) {
                 _state.value = AgentState.ERROR
-                val timeoutMsg = "No pude completar la tarea a tiempo. Intenta de nuevo."
+                val timeoutMsg = "Timeout: no pude completar la tarea."
                 val currentMsgs = _agentMessages.value.toMutableList()
                 currentMsgs.add(Message("assistant", timeoutMsg))
                 _agentMessages.value = currentMsgs
                 RoboPalApplication.ttsManager.speak(timeoutMsg)
             }
         } catch (t: Throwable) {
+            Log.e(TAG, "Crash en agentLoop: ${t.message}", t)
             _state.value = AgentState.ERROR
-            val internalErrorMsg = "Ocurrió un error interno. Intenta de nuevo."
+            val internalErrorMsg = "Error interno. Intenta de nuevo."
             val currentMsgs = _agentMessages.value.toMutableList()
             currentMsgs.add(Message("assistant", internalErrorMsg))
             _agentMessages.value = currentMsgs
@@ -67,7 +65,7 @@ class AgentEngine(
 
     private suspend fun agentLoopInternal(goal: String) {
         val trimmedGoal = goal.trim()
-        if (trimmedGoal.length < 5) {
+        if (trimmedGoal.length < 3) {
             val shortMsg = "No entendí, ¿puedes repetir?"
             val currentMsgs = _agentMessages.value.toMutableList()
             currentMsgs.add(Message(role = "assistant", content = shortMsg))
@@ -78,7 +76,7 @@ class AgentEngine(
 
         if (!RoboPalApplication.llmManager.isReady.value) {
             _state.value = AgentState.ERROR
-            val notReadyMsg = "No hay un modelo cargado. Ve a la pantalla Modelos y descarga Qwen2.5-1.5B-Instruct en formato .task."
+            val notReadyMsg = "No hay modelo cargado. Ve a Modelos y descarga un modelo .task."
             val currentMsgs = _agentMessages.value.toMutableList()
             currentMsgs.add(Message(role = "assistant", content = notReadyMsg))
             _agentMessages.value = currentMsgs
@@ -99,9 +97,9 @@ class AgentEngine(
         var iterations = 0
         var completed = false
         var lastAssistantResponse: String? = null
+        var fallosConsecutivos = 0
 
         while (iterations < MAX_ITERATIONS && !completed) {
-            // FIX 6: Garantizar que la cancelación de la corrutina libere el loop antes de cada iteración
             coroutineContext.ensureActive()
 
             iterations++
@@ -112,8 +110,20 @@ class AgentEngine(
                 return
             }
 
+            // 1. Truncar historial: system + últimos 6 mensajes, sin huérfanos
+            val ultimos = if (messages.size > 8) messages.takeLast(6) else messages.drop(1)
+            val historial = if (ultimos.firstOrNull()?.role == "tool") ultimos.drop(1) else ultimos
+            val historialCompleto = listOf(messages.first()) + historial
+
+            // 2. Truncar resultados de herramientas grandes
+            val messagesFiltrados = historialCompleto.map { msg ->
+                if (msg.role == "tool" && msg.content.length > 1500) {
+                    msg.copy(content = msg.content.take(1500) + "\n...[truncado]")
+                } else msg
+            }
+
             val response = try {
-                llmProvider.generateResponse(messages, toolRegistry.getAllTools())
+                llmProvider.generateResponse(messagesFiltrados, toolRegistry.getAllTools())
             } catch (e: Exception) {
                 val errMsg = Message(
                     role = "assistant",
@@ -127,6 +137,19 @@ class AgentEngine(
 
             val assistantContent = response.content ?: ""
             val toolCalls = response.toolCalls
+
+            if (toolCalls.isNullOrEmpty()) {
+                fallosConsecutivos++
+                if (fallosConsecutivos >= 3 && assistantContent.isBlank()) {
+                    _state.value = AgentState.ERROR
+                    val errorMsg = Message("assistant", "No pude procesar tu solicitud.")
+                    messages.add(errorMsg)
+                    _agentMessages.value = messages.toList()
+                    return
+                }
+            } else {
+                fallosConsecutivos = 0
+            }
 
             if (assistantContent.isNotBlank()) {
                 lastAssistantResponse = assistantContent

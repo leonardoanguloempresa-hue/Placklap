@@ -56,11 +56,12 @@ fun ChatScreen(
     val messages by agentEngine.agentMessages.collectAsState()
     val agentState by agentEngine.state.collectAsState()
 
+    val bloqueado = agentState != AgentState.IDLE
+
     var inputText by remember { mutableStateOf("") }
     val listState = rememberLazyListState()
     val coroutineScope = rememberCoroutineScope()
 
-    // Scroll al último mensaje en cada actualización
     LaunchedEffect(messages.size) {
         if (messages.isNotEmpty()) {
             listState.animateScrollToItem(messages.size - 1)
@@ -73,7 +74,6 @@ fun ChatScreen(
             .background(Color.Black)
             .padding(16.dp)
     ) {
-        // Cabecera con cara compacta del Robot
         Card(
             modifier = Modifier
                 .fillMaxWidth()
@@ -114,7 +114,6 @@ fun ChatScreen(
             }
         }
 
-        // Lista de chat con animación de entrada
         LazyColumn(
             state = listState,
             modifier = Modifier
@@ -122,7 +121,7 @@ fun ChatScreen(
                 .fillMaxWidth(),
             verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
-            itemsIndexed(messages) { index, msg ->
+            itemsIndexed(messages) { _, msg ->
                 AnimatedVisibility(
                     visible = true,
                     enter = fadeIn() + slideInVertically(initialOffsetY = { it / 2 })
@@ -134,7 +133,6 @@ fun ChatScreen(
 
         Spacer(modifier = Modifier.height(8.dp))
 
-        // Campo de texto de entrada
         Row(
             modifier = Modifier.fillMaxWidth(),
             verticalAlignment = Alignment.CenterVertically
@@ -142,15 +140,19 @@ fun ChatScreen(
             OutlinedTextField(
                 value = inputText,
                 onValueChange = { inputText = it },
+                enabled = !bloqueado,
                 modifier = Modifier.weight(1f),
                 placeholder = { Text("Escribe una instrucción a RoboPal...", color = Color.Gray) },
                 colors = OutlinedTextFieldDefaults.colors(
                     focusedContainerColor = Color(0xFF1E1E1E),
                     unfocusedContainerColor = Color(0xFF121212),
+                    disabledContainerColor = Color(0xFF0A0A0A),
                     focusedBorderColor = Color(0xFFE0E0E0),
                     unfocusedBorderColor = Color(0xFF333333),
+                    disabledBorderColor = Color(0xFF222222),
                     focusedTextColor = Color.White,
-                    unfocusedTextColor = Color.White
+                    unfocusedTextColor = Color.White,
+                    disabledTextColor = Color.Gray
                 ),
                 shape = RoundedCornerShape(24.dp),
                 maxLines = 3
@@ -160,7 +162,7 @@ fun ChatScreen(
 
             IconButton(
                 onClick = {
-                    if (inputText.isNotBlank()) {
+                    if (inputText.isNotBlank() && !bloqueado) {
                         val prompt = inputText
                         inputText = ""
                         coroutineScope.launch {
@@ -168,14 +170,15 @@ fun ChatScreen(
                         }
                     }
                 },
+                enabled = !bloqueado,
                 modifier = Modifier
                     .size(48.dp)
-                    .background(Color(0xFF2A2A35), CircleShape)
+                    .background(if (bloqueado) Color(0xFF1A1A22) else Color(0xFF2A2A35), CircleShape)
             ) {
                 Icon(
                     imageVector = Icons.AutoMirrored.Filled.Send,
                     contentDescription = "Enviar",
-                    tint = Color.White
+                    tint = if (bloqueado) Color.DarkGray else Color.White
                 )
             }
         }

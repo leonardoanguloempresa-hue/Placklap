@@ -1,9 +1,9 @@
 package com.robopal.app.ui.screens
 
+import android.content.Intent
+import android.net.Uri
+import android.widget.Toast
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
-import androidx.compose.foundation.clickable
-import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -11,53 +11,31 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.CheckCircle
-import androidx.compose.material.icons.filled.Download
-import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
-import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
-import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.OutlinedTextFieldDefaults
-import androidx.compose.material3.Tab
-import androidx.compose.material3.TabRow
-import androidx.compose.material3.TabRowDefaults
-import androidx.compose.material3.TabRowDefaults.tabIndicatorOffset
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
-import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import com.robopal.app.RoboPalApplication
 import com.robopal.app.managers.HuggingFaceClient
 import com.robopal.app.managers.HuggingFaceModel
-import com.robopal.app.ui.theme.DarkCard
-import com.robopal.app.ui.theme.NeutralPrimary
-import com.robopal.app.ui.theme.PureBlack
-import com.robopal.app.ui.theme.SubtleBorder
-import com.robopal.app.ui.theme.TextPrimary
-import com.robopal.app.ui.theme.TextSecondary
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import java.io.File
 
@@ -65,366 +43,161 @@ import java.io.File
 fun ModelsScreen(
     modifier: Modifier = Modifier
 ) {
-    val hfClient = remember { HuggingFaceClient() }
-    val scope = rememberCoroutineScope()
-    val downloadProgressState by RoboPalApplication.downloadManager.downloadProgress.collectAsState()
+    val context = LocalContext.current
+    val downloadManager = RoboPalApplication.downloadManager
+    val llmManager = RoboPalApplication.llmManager
 
-    var selectedTabIndex by remember { mutableStateOf(0) }
-    val tabs = listOf("MediaPipe (.task)", "Modelos Descargados")
+    val downloadProgressState by downloadManager.downloadProgress.collectAsState()
 
-    var searchQuery by remember { mutableStateOf("qwen") }
-    var searchResults by remember { mutableStateOf<List<HuggingFaceModel>>(emptyList()) }
-    var isSearching by remember { mutableStateOf(false) }
-    var downloadingRepoId by remember { mutableStateOf<String?>(null) }
-    var statusMessage by remember { mutableStateOf("") }
-
-    var localTaskFiles by remember { mutableStateOf<List<File>>(emptyList()) }
-    var activeModelName by remember { mutableStateOf("") }
-
-    fun refreshLocalModels() {
-        val dir = RoboPalApplication.llmManager.modelDirectory
-        if (dir.exists()) {
-            val files = dir.listFiles { _, name -> name.endsWith(".task", ignoreCase = true) }?.toList() ?: emptyList()
-            localTaskFiles = files
-            val active = RoboPalApplication.llmManager.activeModelFile
-            if (active != null && files.contains(active)) {
-                activeModelName = active.name
-            } else if (files.isNotEmpty()) {
-                activeModelName = files.first().name
-                scope.launch {
-                    try {
-                        RoboPalApplication.llmManager.setActiveModelAndLoad(files.first())
-                    } catch (e: Exception) {
-                        statusMessage = "Error cargando modelo: ${e.message}"
-                    }
-                }
-            }
-        }
-    }
-
-    LaunchedEffect(Unit) {
-        refreshLocalModels()
-        isSearching = true
-        searchResults = hfClient.searchModels(searchQuery)
-        isSearching = false
-    }
+    val modelDir = llmManager.modelDirectory
+    val installedFiles = modelDir.listFiles { _, name -> name.endsWith(".task", ignoreCase = true) }?.toList() ?: emptyList()
 
     Column(
         modifier = modifier
             .fillMaxSize()
-            .background(PureBlack)
+            .background(Color.Black)
             .padding(16.dp)
     ) {
         Text(
-            text = "Modelos MediaPipe LLM (.task)",
-            fontSize = 20.sp,
-            fontWeight = FontWeight.Bold,
-            color = TextPrimary,
+            text = "Catálogo de Modelos .task",
+            style = MaterialTheme.typography.titleLarge,
+            color = Color.White
+        )
+        Text(
+            text = "Descarga modelos Instruct en formato MediaPipe .task para la inferencia en chip.",
+            style = MaterialTheme.typography.bodyMedium,
+            color = Color.Gray,
             modifier = Modifier.padding(bottom = 16.dp)
         )
 
-        TabRow(
-            selectedTabIndex = selectedTabIndex,
-            containerColor = PureBlack,
-            contentColor = TextPrimary,
-            indicator = { tabPositions ->
-                TabRowDefaults.Indicator(
-                    Modifier.tabIndicatorOffset(tabPositions[selectedTabIndex]),
-                    color = NeutralPrimary
-                )
-            }
-        ) {
-            tabs.forEachIndexed { index, title ->
-                Tab(
-                    selected = selectedTabIndex == index,
-                    onClick = {
-                        selectedTabIndex = index
-                        if (index == 1) refreshLocalModels()
-                    },
-                    text = { Text(title, fontWeight = FontWeight.Medium, fontSize = 13.sp) }
-                )
-            }
-        }
-
-        Spacer(modifier = Modifier.height(16.dp))
-
-        val progressInfo = downloadProgressState
-        if (progressInfo != null && !progressInfo.isCompleted && progressInfo.error == null) {
-            Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .clip(RoundedCornerShape(16.dp))
-                    .background(DarkCard)
-                    .border(1.dp, SubtleBorder, RoundedCornerShape(16.dp))
-                    .padding(12.dp)
-            ) {
-                Text(
-                    text = "Descargando ${progressInfo.fileName}: ${progressInfo.percentage}%",
-                    color = NeutralPrimary,
-                    fontSize = 12.sp,
-                    fontWeight = FontWeight.Bold
-                )
-                Spacer(modifier = Modifier.height(6.dp))
-                LinearProgressIndicator(
-                    progress = progressInfo.percentage / 100f,
-                    modifier = Modifier.fillMaxWidth(),
-                    color = NeutralPrimary,
-                    trackColor = PureBlack
-                )
-            }
-            Spacer(modifier = Modifier.height(12.dp))
-        }
-
-        if (statusMessage.isNotBlank()) {
-            Text(
-                text = statusMessage,
-                color = NeutralPrimary,
-                fontSize = 12.sp,
-                modifier = Modifier.padding(bottom = 8.dp)
-            )
-        }
-
-        when (selectedTabIndex) {
-            0 -> {
-                Row(
+        downloadProgressState?.let { dp ->
+            if (!dp.isCompleted && dp.error == null) {
+                Card(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .clip(RoundedCornerShape(50))
-                        .background(DarkCard)
-                        .border(1.dp, SubtleBorder, RoundedCornerShape(50))
-                        .padding(horizontal = 8.dp, vertical = 4.dp),
-                    verticalAlignment = Alignment.CenterVertically
+                        .padding(bottom = 16.dp),
+                    colors = CardDefaults.cardColors(containerColor = Color(0xFF1E1E1E))
                 ) {
-                    OutlinedTextField(
-                        value = searchQuery,
-                        onValueChange = { searchQuery = it },
-                        placeholder = { Text("Buscar modelos .task...", color = TextSecondary, fontSize = 14.sp) },
-                        modifier = Modifier.weight(1f),
-                        colors = OutlinedTextFieldDefaults.colors(
-                            focusedBorderColor = androidx.compose.ui.graphics.Color.Transparent,
-                            unfocusedBorderColor = androidx.compose.ui.graphics.Color.Transparent,
-                            focusedContainerColor = androidx.compose.ui.graphics.Color.Transparent,
-                            unfocusedContainerColor = androidx.compose.ui.graphics.Color.Transparent,
-                            focusedTextColor = TextPrimary,
-                            unfocusedTextColor = TextPrimary
+                    Column(modifier = Modifier.padding(16.dp)) {
+                        Text(text = "Descargando ${dp.fileName}: ${dp.percentage}%", color = Color.White)
+                        Spacer(modifier = Modifier.height(8.dp))
+                        LinearProgressIndicator(
+                            progress = { dp.percentage / 100f },
+                            modifier = Modifier.fillMaxWidth(),
+                            color = Color(0xFF7B61FF)
                         )
-                    )
+                    }
+                }
+            }
+        }
 
-                    IconButton(
-                        onClick = {
-                            if (searchQuery.isNotBlank()) {
-                                scope.launch {
-                                    isSearching = true
-                                    searchResults = hfClient.searchModels(searchQuery)
-                                    isSearching = false
+        Text(
+            text = "Modelos Recomendados (Instruct)",
+            style = MaterialTheme.typography.titleMedium,
+            color = Color.White,
+            modifier = Modifier.padding(vertical = 8.dp)
+        )
+
+        LazyColumn(
+            modifier = Modifier.fillMaxSize()
+        ) {
+            items(HuggingFaceClient.CURATED_MODELS) { model ->
+                ModelItemCard(
+                    model = model,
+                    installedFiles = installedFiles,
+                    isDownloading = downloadProgressState != null && !(downloadProgressState?.isCompleted ?: true),
+                    onDownloadClick = {
+                        if (model.requiresLicense && !model.licenseUrl.isNullOrBlank()) {
+                            Toast.makeText(context, "Acepta la licencia en Hugging Face y vuelve a intentar", Toast.LENGTH_LONG).show()
+                            val intent = Intent(Intent.ACTION_VIEW, Uri.parse(model.licenseUrl))
+                            context.startActivity(intent)
+                        } else {
+                            val targetFile = File(modelDir, model.taskFileName)
+                            CoroutineScope(Dispatchers.IO).launch {
+                                val res = downloadManager.downloadFile(model.downloadUrl, targetFile.absolutePath)
+                                if (!res.startsWith("Error")) {
+                                    llmManager.loadModel(targetFile)
                                 }
                             }
-                        },
-                        modifier = Modifier
-                            .size(36.dp)
-                            .clip(RoundedCornerShape(50))
-                            .background(NeutralPrimary)
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.Search,
-                            contentDescription = "Buscar",
-                            tint = PureBlack,
-                            modifier = Modifier.size(18.dp)
-                        )
-                    }
-                }
-
-                Spacer(modifier = Modifier.height(16.dp))
-
-                if (isSearching) {
-                    Column(
-                        modifier = Modifier.fillMaxSize(),
-                        verticalArrangement = Arrangement.Center,
-                        horizontalAlignment = Alignment.CenterHorizontally
-                    ) {
-                        CircularProgressIndicator(color = NeutralPrimary)
-                        Text("Buscando en HuggingFace...", color = TextSecondary, modifier = Modifier.padding(top = 8.dp))
-                    }
-                } else if (searchResults.isEmpty()) {
-                    Text("No se encontraron modelos con '$searchQuery'.", color = TextSecondary)
-                } else {
-                    LazyColumn(
-                        verticalArrangement = Arrangement.spacedBy(10.dp),
-                        modifier = Modifier.fillMaxSize()
-                    ) {
-                        items(searchResults) { model ->
-                            HuggingFaceModelCard(
-                                model = model,
-                                isDownloading = downloadingRepoId == model.id,
-                                onDownload = {
-                                    scope.launch {
-                                        downloadingRepoId = model.id
-                                        statusMessage = "Buscando archivo .task en ${model.id}..."
-                                        val downloadUrl = hfClient.getTaskDownloadUrl(model.id)
-                                        if (downloadUrl != null) {
-                                            val fileName = downloadUrl.substringAfterLast("/")
-                                            val targetFile = File(RoboPalApplication.llmManager.modelDirectory, fileName)
-                                            statusMessage = "Iniciando descarga de $fileName..."
-                                            val result = RoboPalApplication.downloadManager.downloadFile(downloadUrl, targetFile.absolutePath)
-                                            statusMessage = result
-                                            if (targetFile.exists()) {
-                                                try {
-                                                    RoboPalApplication.llmManager.setActiveModelAndLoad(targetFile)
-                                                    statusMessage = "Modelo ${targetFile.name} cargado con éxito en MediaPipe."
-                                                } catch (e: Exception) {
-                                                    statusMessage = "Error cargando modelo: ${e.message}"
-                                                }
-                                            }
-                                            refreshLocalModels()
-                                        } else {
-                                            statusMessage = "Error: No se encontró ningún archivo .task en el repositorio."
-                                        }
-                                        downloadingRepoId = null
-                                    }
-                                }
-                            )
+                        }
+                    },
+                    onSelectClick = { file ->
+                        CoroutineScope(Dispatchers.IO).launch {
+                            llmManager.loadModel(file)
                         }
                     }
-                }
-            }
-            1 -> {
-                if (localTaskFiles.isEmpty()) {
-                    Text(
-                        text = "Aún no hay modelos .task descargados en la carpeta de la app.",
-                        color = TextSecondary,
-                        modifier = Modifier.padding(16.dp)
-                    )
-                } else {
-                    LazyColumn(
-                        verticalArrangement = Arrangement.spacedBy(10.dp),
-                        modifier = Modifier.fillMaxSize()
-                    ) {
-                        items(localTaskFiles) { file ->
-                            LocalModelCard(
-                                file = file,
-                                isActive = file.name == activeModelName,
-                                onSelect = {
-                                    scope.launch {
-                                        try {
-                                            RoboPalApplication.llmManager.setActiveModelAndLoad(file)
-                                            activeModelName = file.name
-                                            statusMessage = "Modelo cargado con éxito: ${file.name}"
-                                        } catch (e: Exception) {
-                                            statusMessage = "Error cargando modelo: ${e.message}"
-                                        }
-                                    }
-                                }
-                            )
-                        }
-                    }
-                }
+                )
             }
         }
     }
 }
 
 @Composable
-fun HuggingFaceModelCard(
+fun ModelItemCard(
     model: HuggingFaceModel,
+    installedFiles: List<File>,
     isDownloading: Boolean,
-    onDownload: () -> Unit
+    onDownloadClick: () -> Unit,
+    onSelectClick: (File) -> Unit
 ) {
+    val installedFile = installedFiles.firstOrNull { it.name.equals(model.taskFileName, ignoreCase = true) }
+    val isInstalled = installedFile != null
+    val isActive = RoboPalApplication.llmManager.activeModelFile?.name.equals(model.taskFileName, ignoreCase = true)
+
     Card(
         modifier = Modifier
             .fillMaxWidth()
-            .border(1.dp, SubtleBorder, RoundedCornerShape(16.dp)),
-        colors = CardDefaults.cardColors(containerColor = DarkCard),
-        shape = RoundedCornerShape(16.dp)
+            .padding(vertical = 6.dp),
+        colors = CardDefaults.cardColors(containerColor = Color(0xFF121212)),
+        shape = RoundedCornerShape(12.dp)
     ) {
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(14.dp),
+                .padding(16.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
             Column(modifier = Modifier.weight(1f)) {
+                Text(text = model.name, style = MaterialTheme.typography.titleMedium, color = Color.White)
                 Text(
-                    text = model.id,
-                    fontSize = 14.sp,
-                    fontWeight = FontWeight.Bold,
-                    color = TextPrimary
+                    text = if (isInstalled) "Instalado (${installedFile?.length()?.div(1024 * 1024)} MB)" else "Tamaño aprox: ${model.sizeBytes / (1024 * 1024)} MB",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = if (isActive) Color(0xFF4CAF50) else Color.Gray
                 )
-                Text(
-                    text = "Descargas: ${model.downloads} | Me gusta: ${model.likes}",
-                    fontSize = 11.sp,
-                    color = TextSecondary,
-                    modifier = Modifier.padding(top = 2.dp)
-                )
-            }
-
-            Button(
-                onClick = onDownload,
-                enabled = !isDownloading,
-                colors = ButtonDefaults.buttonColors(containerColor = NeutralPrimary, contentColor = PureBlack),
-                shape = RoundedCornerShape(50)
-            ) {
-                if (isDownloading) {
-                    CircularProgressIndicator(color = PureBlack, modifier = Modifier.size(16.dp), strokeWidth = 2.dp)
-                } else {
-                    Icon(imageVector = Icons.Default.Download, contentDescription = "Descargar", modifier = Modifier.size(16.dp), tint = PureBlack)
-                    Spacer(modifier = Modifier.width(4.dp))
-                    Text("Obtener .task", fontSize = 12.sp, color = PureBlack)
+                if (model.requiresLicense) {
+                    Text(
+                        text = "⚠️ Requiere aceptar licencia en HF",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = Color(0xFFFF9800)
+                    )
                 }
             }
-        }
-    }
-}
 
-@Composable
-fun LocalModelCard(
-    file: File,
-    isActive: Boolean,
-    onSelect: () -> Unit
-) {
-    Card(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clip(RoundedCornerShape(16.dp))
-            .border(1.dp, if (isActive) NeutralPrimary else SubtleBorder, RoundedCornerShape(16.dp))
-            .clickable { onSelect() },
-        colors = CardDefaults.cardColors(containerColor = DarkCard),
-        shape = RoundedCornerShape(16.dp)
-    ) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(14.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Column(modifier = Modifier.weight(1f)) {
-                Text(
-                    text = file.name,
-                    fontSize = 14.sp,
-                    fontWeight = FontWeight.Bold,
-                    color = TextPrimary
-                )
-                val sizeMb = file.length() / (1024 * 1024)
-                Text(
-                    text = "Tamaño: $sizeMb MB",
-                    fontSize = 11.sp,
-                    color = TextSecondary,
-                    modifier = Modifier.padding(top = 2.dp)
-                )
-            }
+            Spacer(modifier = Modifier.width(8.dp))
 
-            if (isActive) {
-                Icon(
-                    imageVector = Icons.Default.CheckCircle,
-                    contentDescription = "Modelo Activo",
-                    tint = NeutralPrimary
-                )
+            if (isInstalled) {
+                if (isActive) {
+                    Button(
+                        onClick = {},
+                        enabled = false,
+                        colors = ButtonDefaults.buttonColors(disabledContainerColor = Color(0xFF2A2A35))
+                    ) {
+                        Text("Activo", color = Color(0xFF4CAF50))
+                    }
+                } else {
+                    OutlinedButton(
+                        onClick = { installedFile?.let { onSelectClick(it) } }
+                    ) {
+                        Text("Usar", color = Color.White)
+                    }
+                }
             } else {
                 Button(
-                    onClick = onSelect,
-                    colors = ButtonDefaults.buttonColors(containerColor = PureBlack),
-                    shape = RoundedCornerShape(50)
+                    onClick = onDownloadClick,
+                    enabled = !isDownloading,
+                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF7B61FF))
                 ) {
-                    Text("Activar", fontSize = 12.sp, color = TextPrimary)
+                    Text(if (model.requiresLicense) "Licencia / Descargar" else "Descargar")
                 }
             }
         }
