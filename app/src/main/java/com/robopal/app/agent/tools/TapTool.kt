@@ -3,11 +3,13 @@ package com.robopal.app.agent.tools
 import android.content.Context
 import com.robopal.app.RoboPalApplication
 import com.robopal.app.agent.Tool
+import com.robopal.app.safety.RiskLevel
 import com.robopal.app.services.AgentAccessibilityService
 
 class TapTool : Tool {
     override val name: String = "tap"
     override val description: String = "Realiza un toque rápido en las coordenadas especificadas (x, y) de la pantalla."
+    override val riskLevel: RiskLevel = RiskLevel.LOW
     override val parameterSchema: Map<String, Any> = mapOf(
         "type" to "object",
         "properties" to mapOf(
@@ -19,7 +21,7 @@ class TapTool : Tool {
 
     override suspend fun execute(args: Map<String, Any>): String {
         val service = AgentAccessibilityService.instance
-            ?: return "Error: AgentAccessibilityService no está activo. Solicita al usuario que lo habilite en los ajustes de Accesibilidad."
+            ?: return "Error: AgentAccessibilityService no está activo."
 
         val x = (args["x"] as? Number)?.toFloat()
             ?: return "Error: Parámetro 'x' no válido."
@@ -29,7 +31,7 @@ class TapTool : Tool {
         val context: Context = RoboPalApplication.instance
         val metrics = context.resources.displayMetrics
         if (x < 0 || y < 0 || x > metrics.widthPixels || y > metrics.heightPixels) {
-            return "Error: coordenadas ($x, $y) fuera de pantalla (max ${metrics.widthPixels}x${metrics.heightPixels}). Usa find_and_tap."
+            return "Error: coordenadas ($x, $y) fuera de pantalla. Usa find_and_tap."
         }
 
         val success = service.tap(x, y)

@@ -25,10 +25,18 @@ import com.robopal.app.agent.tools.VideoCutTool
 import com.robopal.app.agent.tools.VideoMergeTool
 import com.robopal.app.agent.tools.WaitTool
 import com.robopal.app.managers.Logger
+import com.robopal.app.safety.AlwaysApproveConfirmationHandler
+import com.robopal.app.safety.RiskConfirmationHandler
+import com.robopal.app.safety.RiskLevel
+import com.robopal.app.safety.ToolExecutionPolicy
 import com.robopal.app.services.AgentAccessibilityService
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.withTimeoutOrNull
 
-class ToolRegistry {
+class ToolRegistry(
+    var confirmationHandler: RiskConfirmationHandler = AlwaysApproveConfirmationHandler(),
+    var policy: ToolExecutionPolicy = ToolExecutionPolicy()
+) {
 
     companion object {
         private const val TAG = "ToolRegistry"
@@ -78,8 +86,37 @@ class ToolRegistry {
     }
 
     suspend fun executeTool(name: String, args: Map<String, Any>): String {
-        val requiresAccessibility = name != "wait" && name != "download" && name != "toggle_flashlight"
+        val tool = getTool(name)
+            ?: run {
+                val errorMsg = "Error: Herramienta '$name' no encontrada en el catálogo."
+                Logger.logToolExecution(name, args, errorMsg)
+                return errorMsg
+            }
 
+        // 1. Dry Run check
+        if (policy.isDryRun) {
+            val dryMsg = "[DRY-RUN] Simulación exitosa de herramienta '$name' con params $args."
+            Logger.logToolExecution(name, args, dryMsg)
+            return dryMsg
+        }
+
+        // 2. Risk Level confirmation
+        if (tool.riskLevel == RiskLevel.HIGH) {
+            val approved = confirmationHandler.requestUserConfirmation(
+                toolName = tool.name,
+                riskLevel = tool.riskLevel,
+                arguments = args,
+                description = tool.description
+            )
+            if (!approved) {
+                val rejectMsg = "Acción cancelada: El usuario rechazó la ejecución de la herramienta de alto riesgo '$name'."
+                Logger.logToolExecution(name, args, rejectMsg)
+                return rejectMsg
+            }
+        }
+
+        // 3. Accessibility Requirement check
+        val requiresAccessibility = name != "wait" && name != "download" && name != "toggle_flashlight"
         if (requiresAccessibility) {
             var instance = AgentAccessibilityService.instance
             val enabledBySystem = isAccessibilityEnabledBySystem()
@@ -99,17 +136,23 @@ class ToolRegistry {
             }
         }
 
-        val tool = getTool(name)
-            ?: run {
-                val errorMsg = "Error: Herramienta '$name' no encontrada en el catálogo."
-                Logger.logToolExecution(name, args, errorMsg)
-                return errorMsg
-            }
-        val result = try {
-            tool.execute(args)
-        } catch (e: Exception) {
-            "Error al ejecutar la herramienta '$name': ${e.localizedMessage ?: e.message}"
+        // 4. Custom validation
+        val validationError = tool.validate(args)
+        if (validationError != null) {
+            val valMsg = "Error de validación en '$name': $validationError"
+            Logger.logToolExecution(name, args, valMsg)
+            return valMsg
         }
+
+        // 5. Execution with timeout limit
+        val result = withTimeoutOrNull(policy.timeoutMsPerTool) {
+            try {
+                tool.execute(args)
+            } catch (e: Exception) {
+                "Error al ejecutar la herramienta '$name': ${e.localizedMessage ?: e.message}"
+            }
+        } ?: "Error: La ejecución de la herramienta '$name' superó el límite de tiempo (${policy.timeoutMsPerTool} ms)."
+
         Logger.logToolExecution(name, args, result)
         return result
     }

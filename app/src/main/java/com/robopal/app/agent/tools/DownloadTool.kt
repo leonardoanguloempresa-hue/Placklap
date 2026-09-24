@@ -1,26 +1,45 @@
 package com.robopal.app.agent.tools
 
-import com.robopal.app.RoboPalApplication
 import com.robopal.app.agent.Tool
+import com.robopal.app.safety.RiskLevel
+import java.io.File
 
 class DownloadTool : Tool {
     override val name: String = "download"
-    override val description: String = "Descarga un archivo desde una URL especificada utilizando el cliente OkHttp."
+    override val description: String = "Descarga un archivo desde una URL válida hacia una ruta de salida."
+    override val riskLevel: RiskLevel = RiskLevel.MEDIUM
     override val parameterSchema: Map<String, Any> = mapOf(
         "type" to "object",
         "properties" to mapOf(
-            "url" to mapOf("type" to "string", "description" to "URL remota del archivo a descargar"),
-            "destinationPath" to mapOf("type" to "string", "description" to "Ruta local donde se guardará el archivo")
+            "url" to mapOf("type" to "string", "description" to "URL de origen"),
+            "outputPath" to mapOf("type" to "string", "description" to "Ruta local de destino")
         ),
-        "required" to listOf("url", "destinationPath")
+        "required" to listOf("url", "outputPath")
     )
 
-    override suspend fun execute(args: Map<String, Any>): String {
+    override suspend fun validate(args: Map<String, Any>): String? {
         val url = args["url"] as? String
-            ?: return "Error: Parámetro 'url' no válido."
-        val destinationPath = args["destinationPath"] as? String
-            ?: return "Error: Parámetro 'destinationPath' no válido."
+        val outputPath = args["outputPath"] as? String
 
-        return RoboPalApplication.downloadManager.downloadFile(url, destinationPath)
+        if (url.isNullOrBlank() || !url.startsWith("http")) {
+            return "URL inválida o insegura. Debe comenzar por http/https."
+        }
+        if (outputPath.isNullOrBlank()) {
+            return "Ruta de salida no especificada."
+        }
+
+        // Path Traversal Check
+        val file = File(outputPath)
+        if (file.canonicalPath.contains("..")) {
+            return "Ruta insegura detectada (Path Traversal prohibido)."
+        }
+
+        return null
+    }
+
+    override suspend fun execute(args: Map<String, Any>): String {
+        val url = args["url"] as String
+        val outputPath = args["outputPath"] as String
+        return com.robopal.app.RoboPalApplication.downloadManager.downloadFile(url, outputPath)
     }
 }

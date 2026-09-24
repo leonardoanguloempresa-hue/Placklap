@@ -1,17 +1,22 @@
 package com.robopal.app.services
 
 import android.inputmethodservice.InputMethodService
+import android.util.Log
+import android.view.View
+import com.robopal.app.R
 
 class RobotImeService : InputMethodService() {
 
     companion object {
-        var pendingText: String? = null
+        private const val TAG = "RobotImeService"
         var instance: RobotImeService? = null
+        var pendingText: String? = null
     }
 
     override fun onCreate() {
         super.onCreate()
         instance = this
+        Log.i(TAG, "RobotImeService creado")
     }
 
     override fun onDestroy() {
@@ -21,16 +26,16 @@ class RobotImeService : InputMethodService() {
         }
     }
 
-    override fun onStartInput(attribute: android.view.inputmethod.EditorInfo?, restarting: Boolean) {
-        super.onStartInput(attribute, restarting)
-        val textToCommit = pendingText
-        if (!textToCommit.isNullOrEmpty()) {
-            val ic = currentInputConnection
-            if (ic != null) {
-                ic.commitText(textToCommit, 1)
-                pendingText = null
-                requestHideSelf(0)
-            }
+    override fun onCreateInputView(): View {
+        return layoutInflater.inflate(R.layout.ime_keyboard_view, null)
+    }
+
+    fun injectText(text: String): Boolean {
+        val sanitized = text.replace("\r", "")
+        val ic = currentInputConnection ?: run {
+            Log.w(TAG, "No hay InputConnection activo para inyectar texto")
+            return false
         }
+        return ic.commitText(sanitized, 1)
     }
 }

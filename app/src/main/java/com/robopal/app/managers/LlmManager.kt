@@ -9,7 +9,9 @@ import com.robopal.app.agent.LlmResponse
 import com.robopal.app.agent.Message
 import com.robopal.app.agent.Tool
 import com.robopal.app.agent.ToolCall
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -21,8 +23,9 @@ import org.json.JSONObject
 import java.io.File
 import java.nio.charset.StandardCharsets
 import java.util.UUID
+import kotlin.coroutines.coroutineContext
 
-class LlmManager(private val context: Context) : LlmProvider {
+open class LlmManager(private val context: Context) : LlmProvider {
 
     companion object {
         private const val TAG = "LlmManager"
@@ -55,7 +58,7 @@ class LlmManager(private val context: Context) : LlmProvider {
     private val _isGenerating = MutableStateFlow(false)
     val isGenerating: StateFlow<Boolean> = _isGenerating.asStateFlow()
 
-    val modelDirectory: File
+    open val modelDirectory: File
         get() {
             val dir = File(context.getExternalFilesDir(null), "models")
             if (!dir.exists()) {
@@ -75,7 +78,7 @@ class LlmManager(private val context: Context) : LlmProvider {
         }
     }
 
-    fun isModelAvailable(): Boolean {
+    open fun isModelAvailable(): Boolean {
         if (activeModelFile != null && activeModelFile!!.exists() && _isReady.value) return true
         val dir = modelDirectory
         val files = dir.listFiles { _, name -> name.endsWith(".task", ignoreCase = true) }
@@ -88,14 +91,27 @@ class LlmManager(private val context: Context) : LlmProvider {
 
     suspend fun loadModel(modelFile: File) = llmMutex.withLock {
         withContext(Dispatchers.IO) {
+            coroutineContext.ensureActive()
             if (!modelFile.exists()) throw IllegalArgumentException("Modelo no encontrado: ${modelFile.absolutePath}")
-            llmInference?.close()
+
+            try {
+                llmInference?.close()
+            } catch (e: Exception) {
+                Log.w(TAG, "Error cerrando la instancia previa de LlmInference: ${e.message}")
+            }
+            llmInference = null
+            _isReady.value = false
+
             Log.i(TAG, "Cargando modelo MediaPipe .task en memoria (con Mutex): ${modelFile.absolutePath}")
             val options = LlmInferenceOptions.builder()
                 .setModelPath(modelFile.absolutePath)
                 .setMaxTokens(2048)
                 .build()
-            llmInference = LlmInference.createFromOptions(context, options)
+
+            val newInference = LlmInference.createFromOptions(context, options)
+            coroutineContext.ensureActive()
+
+            llmInference = newInference
             activeModelFile = modelFile
             _isReady.value = true
             Log.i(TAG, "Modelo MediaPipe .task cargado con éxito.")
@@ -104,12 +120,18 @@ class LlmManager(private val context: Context) : LlmProvider {
 
     suspend fun generateResponse(prompt: String): String = llmMutex.withLock {
         withContext(Dispatchers.IO) {
-            val llm = llmInference ?: throw IllegalStateException("Modelo no cargado")
+            coroutineContext.ensureActive()
+            val llm = llmInference ?: throw IllegalStateException("Modelo no cargado o cerrado")
             _isGenerating.value = true
             try {
+                coroutineContext.ensureActive()
                 val rawString = llm.generateResponse(prompt)
+                coroutineContext.ensureActive()
                 val responseBytes = rawString.toByteArray(UTF8)
                 String(responseBytes, UTF8)
+            } catch (e: CancellationException) {
+                Log.w(TAG, "Generación cancelada por el usuario o corrutina.")
+                throw e
             } finally {
                 _isGenerating.value = false
             }
@@ -121,6 +143,7 @@ class LlmManager(private val context: Context) : LlmProvider {
         tools: List<Tool>
     ): LlmResponse = llmMutex.withLock {
         withContext(Dispatchers.IO) {
+            coroutineContext.ensureActive()
             if (llmInference == null) {
                 val dir = modelDirectory
                 val taskFiles = dir.listFiles { _, name -> name.endsWith(".task", ignoreCase = true) }
@@ -133,6 +156,8 @@ class LlmManager(private val context: Context) : LlmProvider {
                         llmInference = LlmInference.createFromOptions(context, options)
                         activeModelFile = taskFiles.first()
                         _isReady.value = true
+                    } catch (e: CancellationException) {
+                        throw e
                     } catch (e: Exception) {
                         return@withContext LlmResponse(
                             content = "Sistema: Error al cargar el modelo .task en MediaPipe: ${e.localizedMessage}",
@@ -189,15 +214,19 @@ Herramientas: open_app, find_and_tap, type_text, press_back, press_home, press_r
             promptBuilder.append("<|im_start|>assistant\n")
 
             val rawResponseText = try {
-                val llm = llmInference ?: throw IllegalStateException("Modelo no cargado")
+                val llm = llmInference ?: throw IllegalStateException("Modelo no cargado o cerrado")
                 _isGenerating.value = true
                 try {
+                    coroutineContext.ensureActive()
                     val rawString = llm.generateResponse(promptBuilder.toString())
+                    coroutineContext.ensureActive()
                     val responseBytes = rawString.toByteArray(UTF8)
                     String(responseBytes, UTF8)
                 } finally {
                     _isGenerating.value = false
                 }
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: Exception) {
                 return@withContext LlmResponse(
                     content = "Error en la inferencia del modelo MediaPipe: ${e.localizedMessage}",
@@ -205,16 +234,13 @@ Herramientas: open_app, find_and_tap, type_text, press_back, press_home, press_r
                 )
             }
 
-            // Paso 1: eliminar pares <think>...</think>
             var limpio = rawResponseText.replace(
                 Regex("<think>.*?</think>", RegexOption.DOT_MATCHES_ALL), ""
             )
-            // Paso 2: si queda un <think> abierto (modelo truncado), cortar ahí
             if (limpio.contains("<think>")) {
                 limpio = limpio.substringBefore("<think>")
             }
 
-            // Paso 3: parsear tool calls sobre el texto limpio
             val toolCallsList = mutableListOf<ToolCall>()
             val xmlRegex = Regex("<tool_call>(.*?)</tool_call>", RegexOption.DOT_MATCHES_ALL)
             val xmlMatches = xmlRegex.findAll(limpio)
@@ -322,9 +348,14 @@ Herramientas: open_app, find_and_tap, type_text, press_back, press_home, press_r
 
     suspend fun unload() = llmMutex.withLock {
         withContext(Dispatchers.IO) {
-            llmInference?.close()
+            try {
+                llmInference?.close()
+            } catch (e: Exception) {
+                Log.w(TAG, "Error cerrando LlmInference durante unload: ${e.message}")
+            }
             llmInference = null
             _isReady.value = false
+            _isGenerating.value = false
         }
     }
 }
