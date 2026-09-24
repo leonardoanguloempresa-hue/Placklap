@@ -1,0 +1,3 @@
+-keep class org.vosk.** { *; }
+-keep class com.google.mediapipe.** { *; }
+-keep class com.robopal.app.** { *; }

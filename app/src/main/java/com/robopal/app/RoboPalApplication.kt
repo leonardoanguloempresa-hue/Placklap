@@ -45,7 +45,7 @@ class RoboPalApplication : Application() {
         super.onCreate()
         instance = this
 
-        llmManager = LlmManager()
+        llmManager = LlmManager(this)
         ttsManager = TtsManager(this)
         ocrManager = OcrManager()
         ffmpegManager = FFmpegManager()

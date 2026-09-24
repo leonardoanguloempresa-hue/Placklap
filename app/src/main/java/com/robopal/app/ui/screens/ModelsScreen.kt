@@ -262,7 +262,7 @@ fun ModelsScreen(
                                             val result = RoboPalApplication.downloadManager.downloadFile(downloadUrl, targetFile.absolutePath)
                                             statusMessage = result
                                             if (targetFile.exists()) {
-                                                RoboPalApplication.llmManager.loadModel(targetFile.absolutePath)
+                                                RoboPalApplication.llmManager.setActiveModel(targetFile)
                                             }
                                             refreshLocalModels()
                                         } else {

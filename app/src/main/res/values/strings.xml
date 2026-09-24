@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">RoboPal</string>
+    <string name="accessibility_service_label">RoboPal — Control de pantalla</string>
+    <string name="accessibility_service_description">Permite a RoboPal leer la pantalla y ejecutar toques, deslizamientos y escribir texto en tu nombre.</string>
+    <string name="ime_label">RoboPal Teclado</string>
+    <string name="notification_channel_voice">Asistente por voz</string>
+    <string name="notification_channel_download">Descarga de modelos</string>
+    <string name="notification_listening">RoboPal escuchando…</string>
+    <string name="notification_thinking">RoboPal pensando…</string>
+    <string name="notification_working">RoboPal trabajando…</string>
+</resources>
