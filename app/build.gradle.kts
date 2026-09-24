@@ -110,4 +110,8 @@ dependencies {
 
     // ═══════════ LOGGING ═══════════
     implementation("com.jakewharton.timber:timber:5.0.1")
+
+    // ═══════════ TESTING ═══════════
+    testImplementation("junit:junit:4.13.2")
+    testImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-test:1.8.1")
 }

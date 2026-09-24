@@ -13,6 +13,8 @@ import android.util.Log
 import android.view.Gravity
 import android.view.View
 import android.view.WindowManager
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
 import androidx.compose.ui.platform.ComposeView
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleOwner
@@ -111,7 +113,7 @@ class OverlayService : Service(), LifecycleOwner, SavedStateRegistryOwner {
 
             setContent {
                 RoboPalTheme {
-                    val state = RoboPalApplication.agentEngine.state.value
+                    val state by RoboPalApplication.agentEngine.state.collectAsState()
                     RobotFace(agentState = state)
                 }
             }

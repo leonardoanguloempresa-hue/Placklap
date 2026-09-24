@@ -2,59 +2,39 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:tools="http://schemas.android.com/tools">
 
+    <!-- Declaraciones de Hardware Opcionales para compatibilidad -->
+    <uses-feature android:name="android.hardware.camera" android:required="false" />
+    <uses-feature android:name="android.hardware.camera.autofocus" android:required="false" />
+    <uses-feature android:name="android.hardware.microphone" android:required="false" />
+
+    <!-- Permisos de Sistema y Red -->
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
     <uses-permission android:name="android.permission.RECORD_AUDIO" />
-    <uses-feature android:name="android.hardware.microphone" android:required="true" />
+    <uses-permission android:name="android.permission.CAMERA" />
+    <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW" />
+    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
+    <uses-permission android:name="android.permission.FLASHLIGHT" />
+    <uses-permission android:name="android.permission.QUERY_ALL_PACKAGES" tools:ignore="QueryAllPackagesPermission" />
 
+    <!-- Permisos de Foreground Service Android 14 (API 34) -->
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
-    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MICROPHONE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PROJECTION" />
-    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
-    <uses-permission android:name="android.permission.WAKE_LOCK" />
-    <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
-    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
-
-    <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW" />
-    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
-
-    <uses-permission
-        android:name="android.permission.QUERY_ALL_PACKAGES"
-        tools:ignore="QueryAllPackagesPermission" />
-
-    <uses-permission
-        android:name="android.permission.WRITE_EXTERNAL_STORAGE"
-        android:maxSdkVersion="28" />
-    <uses-permission android:name="android.permission.READ_MEDIA_IMAGES" />
-    <uses-permission android:name="android.permission.READ_MEDIA_VIDEO" />
-
-    <queries>
-        <intent>
-            <action android:name="android.intent.action.TTS_SERVICE" />
-        </intent>
-        <intent>
-            <action android:name="android.speech.tts.engine.TTS_SERVICE" />
-        </intent>
-    </queries>
 
     <application
         android:name=".RoboPalApplication"
-        android:allowBackup="false"
-        android:label="RoboPal"
+        android:allowBackup="true"
+        android:icon="@android:drawable/ic_dialog_info"
+        android:label="@string/app_name"
         android:supportsRtl="true"
-        android:hardwareAccelerated="true"
-        android:extractNativeLibs="true"
-        android:enableOnBackInvokedCallback="true"
-        android:usesCleartextTraffic="false"
         android:theme="@style/Theme.RoboPal"
-        tools:targetApi="34">
+        tools:targetApi="31">
 
+        <!-- Actividad Principal -->
         <activity
             android:name=".MainActivity"
             android:exported="true"
-            android:launchMode="singleTask"
-            android:configChanges="orientation|screenSize|keyboardHidden|uiMode"
             android:theme="@style/Theme.RoboPal">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
@@ -62,30 +42,43 @@
             </intent-filter>
         </activity>
 
+        <!-- Servicio de Asistente de Voz Predeterminado -->
+        <service
+            android:name=".assistant.RoboPalVoiceInteractionService"
+            android:label="RoboPal Assistant"
+            android:permission="android.permission.BIND_VOICE_INTERACTION"
+            android:exported="true">
+            <meta-data
+                android:name="android.voice_interaction"
+                android:resource="@xml/voice_interaction_service" />
+            <intent-filter>
+                <action android:name="android.service.voice.VoiceInteractionService" />
+            </intent-filter>
+        </service>
+
+        <service
+            android:name=".assistant.RoboPalVoiceSessionService"
+            android:permission="android.permission.BIND_VOICE_INTERACTION"
+            android:exported="true" />
+
+        <!-- Servicio de Accesibilidad -->
         <service
             android:name=".services.AgentAccessibilityService"
-            android:exported="true"
             android:permission="android.permission.BIND_ACCESSIBILITY_SERVICE"
-            android:label="@string/accessibility_service_label">
+            android:exported="true">
             <intent-filter>
                 <action android:name="android.accessibilityservice.AccessibilityService" />
             </intent-filter>
             <meta-data
-                android:name="android.accessibilityservice"
+                android:name="android.accessibilityservice.AccessibilityService"
                 android:resource="@xml/accessibility_service_config" />
         </service>
 
-        <service
-            android:name=".services.VoiceForegroundService"
-            android:enabled="true"
-            android:exported="false"
-            android:foregroundServiceType="microphone|dataSync" />
-
+        <!-- Servicio Teclado IME -->
         <service
             android:name=".services.RobotImeService"
-            android:exported="true"
             android:permission="android.permission.BIND_INPUT_METHOD"
-            android:label="@string/ime_label">
+            android:exported="true">
             <intent-filter>
                 <action android:name="android.view.InputMethod" />
             </intent-filter>
@@ -94,34 +87,31 @@
                 android:resource="@xml/method" />
         </service>
 
+        <!-- Servicio Foreground de Voz Persistente -->
+        <service
+            android:name=".services.VoiceForegroundService"
+            android:foregroundServiceType="microphone"
+            android:exported="false" />
+
+        <!-- Servicio Foreground de Captura de Pantalla -->
         <service
             android:name=".services.ScreenCaptureService"
-            android:enabled="true"
-            android:exported="false"
-            android:foregroundServiceType="mediaProjection" />
+            android:foregroundServiceType="mediaProjection"
+            android:exported="false" />
 
+        <!-- Servicio de Cara Flotante (Overlay) -->
         <service
             android:name=".services.OverlayService"
-            android:enabled="true"
-            android:exported="false"
-            android:foregroundServiceType="specialUse">
-            <property
-                android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
-                android:value="Burbuja flotante interactiva del asistente RoboPal" />
-        </service>
+            android:exported="false" />
 
+        <!-- Receptor de Arranque del Sistema -->
         <receiver
             android:name=".receivers.BootReceiver"
-            android:enabled="true"
-            android:exported="true"
-            android:directBootAware="false">
+            android:exported="true">
             <intent-filter>
                 <action android:name="android.intent.action.BOOT_COMPLETED" />
-                <action android:name="android.intent.action.QUICKBOOT_POWERON" />
-                <action android:name="com.htc.intent.action.QUICKBOOT_POWERON" />
             </intent-filter>
         </receiver>
 
     </application>
-
 </manifest>
