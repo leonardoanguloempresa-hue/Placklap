@@ -4,6 +4,7 @@ import android.content.Intent
 import android.net.Uri
 import android.widget.Toast
 import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -32,8 +33,10 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import com.robopal.app.RoboPalApplication
+import com.robopal.app.managers.DownloadStatus
 import com.robopal.app.managers.HuggingFaceClient
 import com.robopal.app.managers.HuggingFaceModel
+import com.robopal.app.managers.ModelDownloadState
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -47,7 +50,7 @@ fun ModelsScreen(
     val downloadManager = RoboPalApplication.downloadManager
     val llmManager = RoboPalApplication.llmManager
 
-    val downloadProgressState by downloadManager.downloadProgress.collectAsState()
+    val downloadStates by downloadManager.downloadStates.collectAsState()
 
     val modelDir = llmManager.modelDirectory
     val installedFiles = modelDir.listFiles { _, name -> name.endsWith(".task", ignoreCase = true) }?.toList() ?: emptyList()
@@ -70,27 +73,6 @@ fun ModelsScreen(
             modifier = Modifier.padding(bottom = 16.dp)
         )
 
-        downloadProgressState?.let { dp ->
-            if (!dp.isCompleted && dp.error == null) {
-                Card(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(bottom = 16.dp),
-                    colors = CardDefaults.cardColors(containerColor = Color(0xFF1E1E1E))
-                ) {
-                    Column(modifier = Modifier.padding(16.dp)) {
-                        Text(text = "Descargando ${dp.fileName}: ${dp.percentage}%", color = Color.White)
-                        Spacer(modifier = Modifier.height(8.dp))
-                        LinearProgressIndicator(
-                            progress = { dp.percentage / 100f },
-                            modifier = Modifier.fillMaxWidth(),
-                            color = Color(0xFF7B61FF)
-                        )
-                    }
-                }
-            }
-        }
-
         Text(
             text = "Modelos Recomendados (Instruct)",
             style = MaterialTheme.typography.titleMedium,
@@ -102,24 +84,32 @@ fun ModelsScreen(
             modifier = Modifier.fillMaxSize()
         ) {
             items(HuggingFaceClient.CURATED_MODELS) { model ->
+                val dlState = downloadStates[model.taskFileName] ?: downloadManager.getDownloadState(model.taskFileName)
+
                 ModelItemCard(
                     model = model,
+                    downloadState = dlState,
                     installedFiles = installedFiles,
-                    isDownloading = downloadProgressState != null && !(downloadProgressState?.isCompleted ?: true),
                     onDownloadClick = {
                         if (model.requiresLicense && !model.licenseUrl.isNullOrBlank()) {
                             Toast.makeText(context, "Acepta la licencia en Hugging Face y vuelve a intentar", Toast.LENGTH_LONG).show()
                             val intent = Intent(Intent.ACTION_VIEW, Uri.parse(model.licenseUrl))
                             context.startActivity(intent)
                         } else {
-                            val targetFile = File(modelDir, model.taskFileName)
+                            val targetFileName = model.taskFileName
                             CoroutineScope(Dispatchers.IO).launch {
-                                val res = downloadManager.downloadFile(model.downloadUrl, targetFile.absolutePath)
+                                val res = downloadManager.downloadFile(model.downloadUrl, targetFileName)
                                 if (!res.startsWith("Error")) {
-                                    llmManager.loadModel(targetFile)
+                                    val targetFile = File(modelDir, targetFileName)
+                                    if (targetFile.exists()) {
+                                        llmManager.loadModel(targetFile)
+                                    }
                                 }
                             }
                         }
+                    },
+                    onCancelClick = {
+                        downloadManager.cancelDownload(model.taskFileName)
                     },
                     onSelectClick = { file ->
                         CoroutineScope(Dispatchers.IO).launch {
@@ -135,13 +125,14 @@ fun ModelsScreen(
 @Composable
 fun ModelItemCard(
     model: HuggingFaceModel,
+    downloadState: ModelDownloadState,
     installedFiles: List<File>,
-    isDownloading: Boolean,
     onDownloadClick: () -> Unit,
+    onCancelClick: () -> Unit,
     onSelectClick: (File) -> Unit
 ) {
     val installedFile = installedFiles.firstOrNull { it.name.equals(model.taskFileName, ignoreCase = true) }
-    val isInstalled = installedFile != null
+    val isInstalled = installedFile != null || downloadState.status == DownloadStatus.COMPLETED
     val isActive = RoboPalApplication.llmManager.activeModelFile?.name.equals(model.taskFileName, ignoreCase = true)
 
     Card(
@@ -151,54 +142,112 @@ fun ModelItemCard(
         colors = CardDefaults.cardColors(containerColor = Color(0xFF121212)),
         shape = RoundedCornerShape(12.dp)
     ) {
-        Row(
+        Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(16.dp),
-            verticalAlignment = Alignment.CenterVertically
+                .padding(16.dp)
         ) {
-            Column(modifier = Modifier.weight(1f)) {
-                Text(text = model.name, style = MaterialTheme.typography.titleMedium, color = Color.White)
-                Text(
-                    text = if (isInstalled) "Instalado (${installedFile?.length()?.div(1024 * 1024)} MB)" else "Tamaño aprox: ${model.sizeBytes / (1024 * 1024)} MB",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = if (isActive) Color(0xFF4CAF50) else Color.Gray
-                )
-                if (model.requiresLicense) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(text = model.name, style = MaterialTheme.typography.titleMedium, color = Color.White)
                     Text(
-                        text = "⚠️ Requiere aceptar licencia en HF",
+                        text = if (isInstalled) "Instalado (${(installedFile?.length() ?: downloadState.bytesDownloaded) / (1024 * 1024)} MB)"
+                               else "Tamaño aprox: ${model.sizeBytes / (1024 * 1024)} MB",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = if (isActive) Color(0xFF4CAF50) else Color.Gray
+                    )
+                    if (model.requiresLicense) {
+                        Text(
+                            text = "⚠️ Requiere aceptar licencia en HF",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = Color(0xFFFF9800)
+                        )
+                    }
+                }
+
+                Spacer(modifier = Modifier.width(8.dp))
+
+                if (isInstalled) {
+                    if (isActive) {
+                        Button(
+                            onClick = {},
+                            enabled = false,
+                            colors = ButtonDefaults.buttonColors(disabledContainerColor = Color(0xFF2A2A35))
+                        ) {
+                            Text("Activo", color = Color(0xFF4CAF50))
+                        }
+                    } else {
+                        OutlinedButton(
+                            onClick = {
+                                val fileToLoad = installedFile ?: File(RoboPalApplication.llmManager.modelDirectory, model.taskFileName)
+                                onSelectClick(fileToLoad)
+                            }
+                        ) {
+                            Text("Usar", color = Color.White)
+                        }
+                    }
+                } else {
+                    when (downloadState.status) {
+                        DownloadStatus.DOWNLOADING -> {
+                            OutlinedButton(onClick = onCancelClick) {
+                                Text("Cancelar", color = Color(0xFFFF5252))
+                            }
+                        }
+                        DownloadStatus.FAILED, DownloadStatus.CANCELLED, DownloadStatus.CORRUPTED -> {
+                            Button(
+                                onClick = onDownloadClick,
+                                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF7B61FF))
+                            ) {
+                                Text("Reintentar")
+                            }
+                        }
+                        else -> {
+                            Button(
+                                onClick = onDownloadClick,
+                                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF7B61FF))
+                            ) {
+                                Text(if (model.requiresLicense) "Licencia / Descargar" else "Descargar")
+                            }
+                        }
+                    }
+                }
+            }
+
+            if (!isInstalled && downloadState.status == DownloadStatus.DOWNLOADING) {
+                Spacer(modifier = Modifier.height(10.dp))
+                LinearProgressIndicator(
+                    progress = { if (downloadState.totalBytes > 0) downloadState.bytesDownloaded.toFloat() / downloadState.totalBytes else 0f },
+                    modifier = Modifier.fillMaxWidth(),
+                    color = Color(0xFF7B61FF)
+                )
+                Spacer(modifier = Modifier.height(4.dp))
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Text(
+                        text = "${downloadState.bytesDownloaded / (1024 * 1024)} MB / ${downloadState.totalBytes / (1024 * 1024)} MB",
                         style = MaterialTheme.typography.labelSmall,
-                        color = Color(0xFFFF9800)
+                        color = Color.LightGray
+                    )
+                    Text(
+                        text = "${downloadState.percentage}%",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = Color(0xFF7B61FF)
                     )
                 }
             }
 
-            Spacer(modifier = Modifier.width(8.dp))
-
-            if (isInstalled) {
-                if (isActive) {
-                    Button(
-                        onClick = {},
-                        enabled = false,
-                        colors = ButtonDefaults.buttonColors(disabledContainerColor = Color(0xFF2A2A35))
-                    ) {
-                        Text("Activo", color = Color(0xFF4CAF50))
-                    }
-                } else {
-                    OutlinedButton(
-                        onClick = { installedFile?.let { onSelectClick(it) } }
-                    ) {
-                        Text("Usar", color = Color.White)
-                    }
-                }
-            } else {
-                Button(
-                    onClick = onDownloadClick,
-                    enabled = !isDownloading,
-                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF7B61FF))
-                ) {
-                    Text(if (model.requiresLicense) "Licencia / Descargar" else "Descargar")
-                }
+            if (downloadState.errorMessage != null && downloadState.status != DownloadStatus.COMPLETED) {
+                Spacer(modifier = Modifier.height(6.dp))
+                Text(
+                    text = downloadState.errorMessage,
+                    style = MaterialTheme.typography.labelSmall,
+                    color = Color(0xFFFF5252)
+                )
             }
         }
     }
