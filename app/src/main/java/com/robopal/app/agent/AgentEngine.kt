@@ -110,12 +110,10 @@ class AgentEngine(
                 return
             }
 
-            // 1. Truncar historial: system + últimos 6 mensajes, sin huérfanos
             val ultimos = if (messages.size > 8) messages.takeLast(6) else messages.drop(1)
             val historial = if (ultimos.firstOrNull()?.role == "tool") ultimos.drop(1) else ultimos
             val historialCompleto = listOf(messages.first()) + historial
 
-            // 2. Truncar resultados de herramientas grandes
             val messagesFiltrados = historialCompleto.map { msg ->
                 if (msg.role == "tool" && msg.content.length > 1500) {
                     msg.copy(content = msg.content.take(1500) + "\n...[truncado]")
@@ -170,7 +168,7 @@ class AgentEngine(
 
                     val bannerMsg = Message(
                         role = "assistant",
-                        content = "Ejecutando: ${toolCall.name} con parámetros: ${toolCall.arguments}"
+                        content = "Acción propuesta: ${toolCall.name} con parámetros: ${toolCall.arguments}. Ejecutando tras validación de políticas y confirmación..."
                     )
                     messages.add(bannerMsg)
                     _agentMessages.value = messages.toList()
