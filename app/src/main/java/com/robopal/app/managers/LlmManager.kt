@@ -45,6 +45,11 @@ class LlmManager(private val context: Context) : LlmProvider {
             return dir
         }
 
+    suspend fun setActiveModelAndLoad(file: File) = withContext(Dispatchers.IO) {
+        if (!file.exists()) throw IllegalArgumentException("Modelo no existe: ${file.absolutePath}")
+        loadModel(file)
+    }
+
     fun setActiveModel(file: File) {
         if (file.exists()) {
             activeModelFile = file
@@ -52,9 +57,9 @@ class LlmManager(private val context: Context) : LlmProvider {
     }
 
     fun isModelAvailable(): Boolean {
-        if (activeModelFile != null && activeModelFile!!.exists()) return true
+        if (activeModelFile != null && activeModelFile!!.exists() && _isReady.value) return true
         val dir = modelDirectory
-        val files = dir.listFiles { _, name -> name.endsWith(".task", ignoreCase = true) || name.endsWith(".gguf", ignoreCase = true) }
+        val files = dir.listFiles { _, name -> name.endsWith(".task", ignoreCase = true) }
         if (!files.isNullOrEmpty()) {
             activeModelFile = files.first()
             return true
@@ -65,6 +70,7 @@ class LlmManager(private val context: Context) : LlmProvider {
     suspend fun loadModel(modelFile: File) = withContext(Dispatchers.IO) {
         if (!modelFile.exists()) throw IllegalArgumentException("Modelo no encontrado: ${modelFile.absolutePath}")
         llmInference?.close()
+        Log.i(TAG, "Cargando modelo MediaPipe .task en memoria: ${modelFile.absolutePath}")
         val options = LlmInferenceOptions.builder()
             .setModelPath(modelFile.absolutePath)
             .setMaxTokens(2048)
@@ -72,6 +78,7 @@ class LlmManager(private val context: Context) : LlmProvider {
         llmInference = LlmInference.createFromOptions(context, options)
         activeModelFile = modelFile
         _isReady.value = true
+        Log.i(TAG, "Modelo MediaPipe .task cargado con éxito.")
     }
 
     suspend fun generateResponse(prompt: String): String = withContext(Dispatchers.IO) {
@@ -169,7 +176,6 @@ Herramientas disponibles:
             }
         }
 
-        // Limpiar el texto de los tags de tool_call para el contenido final
         val cleanContent = regex.replace(rawResponseText, "").trim()
 
         return@withContext LlmResponse(

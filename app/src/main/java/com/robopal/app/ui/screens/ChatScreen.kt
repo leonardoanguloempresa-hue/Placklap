@@ -1,5 +1,11 @@
 package com.robopal.app.ui.screens
 
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
@@ -19,12 +25,14 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material.icons.filled.Send
+import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -43,6 +51,7 @@ import com.robopal.app.services.OverlayService
 import com.robopal.app.ui.robot.RobotFace
 import com.robopal.app.ui.theme.DarkCard
 import com.robopal.app.ui.theme.PureBlack
+import com.robopal.app.ui.theme.RobotError
 import com.robopal.app.ui.theme.RobotPrimary
 import com.robopal.app.ui.theme.SubtleBorder
 import com.robopal.app.ui.theme.TextPrimary
@@ -58,6 +67,7 @@ fun ChatScreen(
 ) {
     var inputText by remember { mutableStateOf("") }
     val scope = rememberCoroutineScope()
+    val isModelReady by RoboPalApplication.llmManager.isReady.collectAsState()
 
     Column(
         modifier = modifier
@@ -71,8 +81,36 @@ fun ChatScreen(
             fontSize = 22.sp,
             fontWeight = FontWeight.Bold,
             color = TextPrimary,
-            modifier = Modifier.padding(bottom = 16.dp)
+            modifier = Modifier.padding(bottom = 12.dp)
         )
+
+        // FIX 5: Banner de advertencia si el modelo MediaPipe .task no está cargado
+        if (!isModelReady) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(12.dp))
+                    .background(RobotError.copy(alpha = 0.15f))
+                    .border(1.dp, RobotError.copy(alpha = 0.5f), RoundedCornerShape(12.dp))
+                    .padding(12.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Icon(
+                    imageVector = Icons.Default.Warning,
+                    contentDescription = "Advertencia Modelo",
+                    tint = RobotError,
+                    modifier = Modifier.size(20.dp)
+                )
+                Spacer(modifier = Modifier.width(8.dp))
+                Text(
+                    text = "⚠️ Modelo no cargado — Ve a Modelos y descarga Qwen2.5-1.5B-Instruct (.task)",
+                    fontSize = 12.sp,
+                    color = TextPrimary,
+                    fontWeight = FontWeight.Medium
+                )
+            }
+            Spacer(modifier = Modifier.height(12.dp))
+        }
 
         // Conversación con flujo de texto limpio
         LazyColumn(
@@ -120,7 +158,7 @@ fun ChatScreen(
                 )
             )
 
-            // Botón de micrófono manual para iniciar captura de voz del agente
+            // Botón de micrófono manual
             IconButton(
                 onClick = {
                     OverlayService.instance?.showFace()

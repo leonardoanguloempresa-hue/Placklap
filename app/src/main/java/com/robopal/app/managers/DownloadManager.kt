@@ -29,16 +29,7 @@ class DownloadManager {
     val downloadProgress: StateFlow<DownloadProgress?> = _downloadProgress.asStateFlow()
 
     val downloadsDirectory: File
-        get() {
-            val dir = File(
-                Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS),
-                "RoboPal"
-            )
-            if (!dir.exists()) {
-                dir.mkdirs()
-            }
-            return dir
-        }
+        get() = RoboPalApplication.llmManager.modelDirectory
 
     suspend fun downloadFile(
         url: String,

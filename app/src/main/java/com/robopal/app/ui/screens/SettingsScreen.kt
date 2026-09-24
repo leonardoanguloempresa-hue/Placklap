@@ -29,6 +29,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -44,6 +45,7 @@ import com.robopal.app.ui.theme.RobotPrimary
 import com.robopal.app.ui.theme.SurfaceDark
 import com.robopal.app.ui.theme.TextPrimary
 import com.robopal.app.ui.theme.TextSecondary
+import kotlinx.coroutines.launch
 import java.io.File
 
 @Composable
@@ -51,12 +53,13 @@ fun SettingsScreen(
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
+    val scope = rememberCoroutineScope()
 
     var accessibilityEnabled by remember { mutableStateOf(false) }
     var overlayEnabled by remember { mutableStateOf(false) }
     var confirmDangerousActions by remember { mutableStateOf(true) }
 
-    var localGgufFiles by remember { mutableStateOf<List<File>>(emptyList()) }
+    var localTaskFiles by remember { mutableStateOf<List<File>>(emptyList()) }
     var selectedModelName by remember { mutableStateOf("") }
     var expandedModelDropdown by remember { mutableStateOf(false) }
 
@@ -73,16 +76,20 @@ fun SettingsScreen(
 
         val dir = RoboPalApplication.llmManager.modelDirectory
         if (dir.exists()) {
-            val files = dir.listFiles { _, name -> name.endsWith(".gguf", ignoreCase = true) }?.toList() ?: emptyList()
-            localGgufFiles = files
+            val files = dir.listFiles { _, name -> name.endsWith(".task", ignoreCase = true) }?.toList() ?: emptyList()
+            localTaskFiles = files
             val active = RoboPalApplication.llmManager.activeModelFile
             if (active != null && files.contains(active)) {
                 selectedModelName = active.name
             } else if (files.isNotEmpty()) {
                 selectedModelName = files.first().name
-                RoboPalApplication.llmManager.setActiveModel(files.first())
+                scope.launch {
+                    try {
+                        RoboPalApplication.llmManager.setActiveModelAndLoad(files.first())
+                    } catch (_: Exception) {}
+                }
             } else {
-                selectedModelName = "No hay modelos .gguf locales"
+                selectedModelName = "No hay modelos .task locales"
             }
         }
     }
@@ -179,13 +186,13 @@ fun SettingsScreen(
                 .padding(12.dp)
         ) {
             Text(
-                text = "Seleccionar Modelo .GGUF Cargado",
+                text = "Seleccionar Modelo .task Cargado",
                 fontSize = 15.sp,
                 color = TextPrimary,
                 fontWeight = FontWeight.Medium
             )
             Text(
-                text = "Define qué archivo físico usará el LlmManager para inferencia",
+                text = "Define qué archivo físico usará el LlmManager para MediaPipe LLM",
                 fontSize = 12.sp,
                 color = TextSecondary,
                 modifier = Modifier.padding(bottom = 8.dp)
@@ -195,7 +202,7 @@ fun SettingsScreen(
                 OutlinedCard(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .clickable(enabled = localGgufFiles.isNotEmpty()) { expandedModelDropdown = true }
+                        .clickable(enabled = localTaskFiles.isNotEmpty()) { expandedModelDropdown = true }
                 ) {
                     Text(
                         text = selectedModelName,
@@ -210,12 +217,16 @@ fun SettingsScreen(
                     onDismissRequest = { expandedModelDropdown = false },
                     modifier = Modifier.background(SurfaceDark)
                 ) {
-                    localGgufFiles.forEach { file ->
+                    localTaskFiles.forEach { file ->
                         DropdownMenuItem(
                             text = { Text(file.name, color = TextPrimary) },
                             onClick = {
                                 selectedModelName = file.name
-                                RoboPalApplication.llmManager.setActiveModel(file)
+                                scope.launch {
+                                    try {
+                                        RoboPalApplication.llmManager.setActiveModelAndLoad(file)
+                                    } catch (_: Exception) {}
+                                }
                                 expandedModelDropdown = false
                             }
                         )

@@ -9,7 +9,6 @@ import android.os.Build
 import android.os.IBinder
 import android.util.Log
 import com.robopal.app.RoboPalApplication
-import com.robopal.app.managers.VoskManager
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -54,22 +53,32 @@ class VoiceForegroundService : Service() {
                 val modelDir = RoboPalApplication.voskManager.ensureHotwordModel()
                 RoboPalApplication.voskManager.initialize(modelDir)
                 RoboPalApplication.voskManager.startListening(
-                    grammar = listOf("silf", "sil", "sylf", "self", "cilf", "[unk]")
+                    grammar = listOf("silf", "oye silf", "hey silf", "ok silf", "silf despierta", "[unk]")
                 )
 
                 RoboPalApplication.voskManager.finalText.collect { transcribedText ->
-                    val lower = transcribedText.lowercase()
-                    if (VoskManager.SILF_TRIGGERS.any { lower.contains(it) }) {
-                        var prompt = transcribedText
-                        for (trigger in VoskManager.SILF_TRIGGERS) {
-                            if (lower.contains(trigger)) {
-                                prompt = transcribedText.substringAfter(trigger, "").trim()
-                                break
-                            }
-                        }
-                        if (prompt.isBlank()) prompt = "Hola RoboPal"
-                        onSilfCommandDetected(prompt)
+                    val lower = transcribedText.lowercase().trim()
+                    if (transcribedText.length < 3) return@collect
+
+                    val validTriggers = listOf("silf", "oye silf", "hey silf", "ok silf", "silf despierta")
+                    val matchesHotword = validTriggers.any { trigger ->
+                        lower == trigger ||
+                        lower.startsWith("$trigger ") ||
+                        lower.endsWith(" $trigger") ||
+                        lower.contains(" $trigger ")
                     }
+
+                    if (!matchesHotword) return@collect
+
+                    var prompt = transcribedText
+                    for (trigger in validTriggers) {
+                        if (lower.contains(trigger)) {
+                            prompt = transcribedText.substringAfter(trigger, "").trim()
+                            break
+                        }
+                    }
+                    if (prompt.isBlank()) prompt = "Hola RoboPal"
+                    onSilfCommandDetected(prompt)
                 }
             } catch (e: Exception) {
                 Log.e(TAG, "Error inicializando o escuchando en VoiceForegroundService: ${e.message}", e)
@@ -83,23 +92,8 @@ class VoiceForegroundService : Service() {
             // 1. Mostrar la cara flotante
             OverlayService.instance?.showFace()
 
-            // 2. Obtener el contexto de pantalla actual
-            val screenContext = AgentAccessibilityService.instance?.readScreenState() ?: "Sin información de pantalla"
-            val pkgName = AgentAccessibilityService.instance?.activePackageName ?: "Desconocida"
-
-            val fullGoalWithContext = "Usuario en la aplicación '$pkgName'. Contexto de pantalla:\n$screenContext\nInstrucción del usuario: $prompt"
-
-            // 3. Verificar disponibilidad del modelo
-            if (!RoboPalApplication.llmManager.isModelAvailable()) {
-                val warning = "Por favor selecciona y descarga un modelo GGUF o MediaPipe task en la pantalla de Modelos."
-                RoboPalApplication.ttsManager.speak(warning)
-                return@launch
-            }
-
-            // 4. Ejecutar el bucle del agente
-            RoboPalApplication.agentEngine.agentLoop(fullGoalWithContext)
-            val summary = "Acción completada por RoboPal."
-            RoboPalApplication.ttsManager.speak(summary)
+            // 2. Ejecutar el bucle del agente directamente
+            RoboPalApplication.agentEngine.agentLoop(prompt)
         }
     }
 
