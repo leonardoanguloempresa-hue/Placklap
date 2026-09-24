@@ -1,5 +1,6 @@
 package com.robopal.app.agent
 
+import com.robopal.app.RoboPalApplication
 import com.robopal.app.managers.Logger
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -31,18 +32,40 @@ class AgentEngine(
     }
 
     suspend fun agentLoop(goal: String) {
+        val trimmedGoal = goal.trim()
+        if (trimmedGoal.length < 5) {
+            val shortMsg = "No entendí, ¿puedes repetir?"
+            val currentMsgs = _agentMessages.value.toMutableList()
+            currentMsgs.add(Message(role = "assistant", content = shortMsg))
+            _agentMessages.value = currentMsgs
+            RoboPalApplication.ttsManager.speak(shortMsg)
+            return
+        }
+
+        // FIX C: Detectar modelo no cargado antes de arrancar
+        if (!RoboPalApplication.llmManager.isReady.value) {
+            _state.value = AgentState.ERROR
+            val notReadyMsg = "No hay un modelo cargado. Ve a la pantalla Modelos y descarga Qwen2.5-1.5B-Instruct en formato .task."
+            val currentMsgs = _agentMessages.value.toMutableList()
+            currentMsgs.add(Message(role = "assistant", content = notReadyMsg))
+            _agentMessages.value = currentMsgs
+            RoboPalApplication.ttsManager.speak(notReadyMsg)
+            return
+        }
+
         _state.value = AgentState.WORKING
 
         if (messages.isEmpty()) {
             val sysMsg = Message(role = "system", content = SYSTEM_PROMPT)
             messages.add(sysMsg)
         }
-        val userMsg = Message(role = "user", content = goal)
+        val userMsg = Message(role = "user", content = trimmedGoal)
         messages.add(userMsg)
         _agentMessages.value = messages.toList()
 
         var iterations = 0
         var completed = false
+        var lastAssistantResponse: String? = null
 
         while (iterations < MAX_ITERATIONS && !completed) {
             iterations++
@@ -64,6 +87,10 @@ class AgentEngine(
             val assistantContent = response.content ?: ""
             val toolCalls = response.toolCalls
 
+            if (assistantContent.isNotBlank()) {
+                lastAssistantResponse = assistantContent
+            }
+
             val assistMsg = Message(
                 role = "assistant",
                 content = assistantContent,
@@ -75,7 +102,6 @@ class AgentEngine(
             if (!toolCalls.isNullOrEmpty()) {
                 _state.value = AgentState.WORKING
                 for (toolCall in toolCalls) {
-                    // Emitir mensaje/banner de estado previo a la ejecución
                     val bannerMsg = Message(
                         role = "assistant",
                         content = "Ejecutando: ${toolCall.name} con parámetros: ${toolCall.arguments}"
@@ -100,6 +126,8 @@ class AgentEngine(
 
         if (_state.value != AgentState.ERROR) {
             _state.value = AgentState.IDLE
+            val finalSpeech = lastAssistantResponse?.takeIf { it.isNotBlank() } ?: "No pude completar la tarea."
+            RoboPalApplication.ttsManager.speak(finalSpeech)
         }
     }
 }

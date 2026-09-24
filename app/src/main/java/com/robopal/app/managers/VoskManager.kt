@@ -28,7 +28,7 @@ class VoskManager(private val context: Context) {
 
     companion object {
         private const val TAG = "VoskManager"
-        val SILF_TRIGGERS = listOf("silf", "sil", "sylf", "self", "cilf")
+        val STRICT_HOTWORD_GRAMMAR = listOf("silf", "oye silf", "hey silf", "ok silf", "silf despierta", "[unk]")
     }
 
     private var model: Model? = null
@@ -103,7 +103,7 @@ class VoskManager(private val context: Context) {
         Log.i(TAG, "Vosk modelo cargado desde ${modelDir.absolutePath}")
     }
 
-    fun startListening(grammar: List<String>? = null) {
+    fun startListening(grammar: List<String>? = STRICT_HOTWORD_GRAMMAR) {
         val m = model ?: run { Log.e(TAG, "Vosk no inicializado"); return }
         stop()
         val recognizer = if (!grammar.isNullOrEmpty()) {
