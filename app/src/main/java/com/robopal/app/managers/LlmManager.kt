@@ -1,6 +1,7 @@
 package com.robopal.app.managers
 
 import android.content.Context
+import android.util.Log
 import com.google.mediapipe.tasks.genai.llminference.LlmInference
 import com.google.mediapipe.tasks.genai.llminference.LlmInference.LlmInferenceOptions
 import com.robopal.app.RoboPalApplication
@@ -8,14 +9,22 @@ import com.robopal.app.agent.LlmProvider
 import com.robopal.app.agent.LlmResponse
 import com.robopal.app.agent.Message
 import com.robopal.app.agent.Tool
+import com.robopal.app.agent.ToolCall
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.withContext
+import org.json.JSONArray
+import org.json.JSONObject
 import java.io.File
+import java.util.UUID
 
 class LlmManager(private val context: Context) : LlmProvider {
+
+    companion object {
+        private const val TAG = "LlmManager"
+    }
 
     private var llmInference: LlmInference? = null
     var activeModelFile: File? = null
@@ -99,21 +108,102 @@ class LlmManager(private val context: Context) : LlmProvider {
             }
         }
 
+        val toolInstructionPrompt = """
+Para usar una herramienta, responde EXACTAMENTE:
+<tool_call>{"name":"nombre","arguments":{...}}</tool_call>
+Herramientas disponibles:
+- tap(x, y)
+- swipe(x1, y1, x2, y2, durationMs)
+- long_press(x, y, durationMs)
+- type_text(text)
+- press_back()
+- press_home()
+- press_recent()
+- read_screen()
+- read_screen_ocr()
+- open_app(packageName)
+- find_and_tap(text)
+- wait(ms)
+- download(url, outputPath)
+- open_url(url)
+- take_screenshot()
+""".trimIndent()
+
         val promptBuilder = StringBuilder()
+        promptBuilder.append("SYSTEM: $toolInstructionPrompt\n")
         for (msg in messages) {
             promptBuilder.append("${msg.role.uppercase()}: ${msg.content}\n")
         }
 
-        val responseText = try {
+        val rawResponseText = try {
             generateResponse(promptBuilder.toString())
         } catch (e: Exception) {
-            "Error en la inferencia del modelo MediaPipe: ${e.localizedMessage}"
+            return@withContext LlmResponse(
+                content = "Error en la inferencia del modelo MediaPipe: ${e.localizedMessage}",
+                toolCalls = null
+            )
         }
 
+        // Extracción de bloques <tool_call>...</tool_call> mediante Regex
+        val regex = Regex("<tool_call>(.*?)</tool_call>", RegexOption.DOT_MATCHES_ALL)
+        val matches = regex.findAll(rawResponseText)
+        val toolCallsList = mutableListOf<ToolCall>()
+
+        for (match in matches) {
+            val jsonContent = match.groupValues[1].trim()
+            try {
+                val jsonObject = JSONObject(jsonContent)
+                val toolName = jsonObject.getString("name")
+                val argsObject = jsonObject.optJSONObject("arguments") ?: JSONObject()
+                val argsMap = jsonObjectToMap(argsObject)
+
+                toolCallsList.add(
+                    ToolCall(
+                        id = UUID.randomUUID().toString(),
+                        name = toolName,
+                        arguments = argsMap
+                    )
+                )
+            } catch (e: Exception) {
+                Log.e(TAG, "Error al parsear JSON de <tool_call>: ${e.message}", e)
+            }
+        }
+
+        // Limpiar el texto de los tags de tool_call para el contenido final
+        val cleanContent = regex.replace(rawResponseText, "").trim()
+
         return@withContext LlmResponse(
-            content = responseText,
-            toolCalls = null
+            content = if (cleanContent.isNotBlank()) cleanContent else null,
+            toolCalls = if (toolCallsList.isNotEmpty()) toolCallsList else null
         )
+    }
+
+    private fun jsonObjectToMap(jsonObject: JSONObject): Map<String, Any> {
+        val map = mutableMapOf<String, Any>()
+        val keys = jsonObject.keys()
+        while (keys.hasNext()) {
+            val key = keys.next()
+            val value = jsonObject.get(key)
+            when (value) {
+                is JSONArray -> map[key] = jsonArrayToList(value)
+                is JSONObject -> map[key] = jsonObjectToMap(value)
+                else -> map[key] = value
+            }
+        }
+        return map
+    }
+
+    private fun jsonArrayToList(jsonArray: JSONArray): List<Any> {
+        val list = mutableListOf<Any>()
+        for (i in 0 until jsonArray.length()) {
+            val value = jsonArray.get(i)
+            when (value) {
+                is JSONArray -> list.add(jsonArrayToList(value))
+                is JSONObject -> list.add(jsonObjectToMap(value))
+                else -> list.add(value)
+            }
+        }
+        return list
     }
 
     fun unload() {

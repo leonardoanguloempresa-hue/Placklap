@@ -9,6 +9,7 @@ import android.os.Build
 import android.os.IBinder
 import android.util.Log
 import com.robopal.app.RoboPalApplication
+import com.robopal.app.managers.VoskManager
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -38,7 +39,7 @@ class VoiceForegroundService : Service() {
 
     override fun onDestroy() {
         super.onDestroy()
-        RoboPalApplication.voskManager.stopContinuousListening()
+        RoboPalApplication.voskManager.stop()
         serviceScope.cancel()
     }
 
@@ -49,8 +50,29 @@ class VoiceForegroundService : Service() {
     fun startListening() {
         Log.d(TAG, "VoiceForegroundService: Iniciando bucle de escucha activa del comando 'Silf' en Dispatchers.IO.")
         serviceScope.launch(Dispatchers.IO) {
-            RoboPalApplication.voskManager.startContinuousListening { prompt ->
-                onSilfCommandDetected(prompt)
+            try {
+                val modelDir = RoboPalApplication.voskManager.ensureHotwordModel()
+                RoboPalApplication.voskManager.initialize(modelDir)
+                RoboPalApplication.voskManager.startListening(
+                    grammar = listOf("silf", "sil", "sylf", "self", "cilf", "[unk]")
+                )
+
+                RoboPalApplication.voskManager.finalText.collect { transcribedText ->
+                    val lower = transcribedText.lowercase()
+                    if (VoskManager.SILF_TRIGGERS.any { lower.contains(it) }) {
+                        var prompt = transcribedText
+                        for (trigger in VoskManager.SILF_TRIGGERS) {
+                            if (lower.contains(trigger)) {
+                                prompt = transcribedText.substringAfter(trigger, "").trim()
+                                break
+                            }
+                        }
+                        if (prompt.isBlank()) prompt = "Hola RoboPal"
+                        onSilfCommandDetected(prompt)
+                    }
+                }
+            } catch (e: Exception) {
+                Log.e(TAG, "Error inicializando o escuchando en VoiceForegroundService: ${e.message}", e)
             }
         }
     }
@@ -69,7 +91,7 @@ class VoiceForegroundService : Service() {
 
             // 3. Verificar disponibilidad del modelo
             if (!RoboPalApplication.llmManager.isModelAvailable()) {
-                val warning = "Por favor selecciona y descarga un modelo GGUF en la pantalla de Modelos."
+                val warning = "Por favor selecciona y descarga un modelo GGUF o MediaPipe task en la pantalla de Modelos."
                 RoboPalApplication.ttsManager.speak(warning)
                 return@launch
             }
