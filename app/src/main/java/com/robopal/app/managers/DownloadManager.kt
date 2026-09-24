@@ -135,13 +135,33 @@ open class DownloadManager {
             val response = call.execute()
 
             if (!response.isSuccessful) {
-                val errorMsg = "HTTP error ${response.code}: ${response.message}"
                 if (partFile.exists()) partFile.delete()
+                val errorMsg = when (response.code) {
+                    401 -> "Este modelo requiere iniciar sesión o autorización del proveedor (HTTP 401)."
+                    403 -> "Acceso denegado al modelo (HTTP 403)."
+                    404 -> "El modelo no existe en la URL especificada (HTTP 404)."
+                    else -> "HTTP error ${response.code}: ${response.message}"
+                }
                 updateState(
                     destinationFileName,
                     ModelDownloadState(
                         fileName = destinationFileName,
                         status = DownloadStatus.FAILED,
+                        errorMessage = errorMsg
+                    )
+                )
+                return@withContext errorMsg
+            }
+
+            val contentType = response.header("Content-Type", "") ?: ""
+            if (contentType.contains("text/html") || contentType.contains("application/json") || contentType.contains("text/plain")) {
+                if (partFile.exists()) partFile.delete()
+                val errorMsg = "Error: El servidor devolvió $contentType en lugar de un binario de modelo .task válido."
+                updateState(
+                    destinationFileName,
+                    ModelDownloadState(
+                        fileName = destinationFileName,
+                        status = DownloadStatus.CORRUPTED,
                         errorMessage = errorMsg
                     )
                 )
@@ -238,7 +258,7 @@ open class DownloadManager {
             errorMsg
         } catch (e: Exception) {
             if (partFile.exists()) partFile.delete()
-            val errorMsg = "Error inseperado en descarga: ${e.localizedMessage ?: e.message}"
+            val errorMsg = "Error inesperado en descarga: ${e.localizedMessage ?: e.message}"
             updateState(
                 destinationFileName,
                 ModelDownloadState(
