@@ -27,6 +27,21 @@ class LlmManager(private val context: Context) : LlmProvider {
     companion object {
         private const val TAG = "LlmManager"
         private val UTF8 = StandardCharsets.UTF_8
+
+        private val requiredArgs = mapOf(
+            "tap" to listOf("x", "y"),
+            "swipe" to listOf("x1", "y1", "x2", "y2", "durationMs"),
+            "long_press" to listOf("x", "y", "durationMs"),
+            "type_text" to listOf("text"),
+            "open_app" to listOf("packageName"),
+            "find_and_tap" to listOf("text"),
+            "wait" to listOf("ms"),
+            "download" to listOf("url", "outputPath"),
+            "open_url" to listOf("url"),
+            "video_cut" to listOf("input", "startSec", "durationSec", "output"),
+            "video_merge" to listOf("inputs", "output"),
+            "video_add_subtitles" to listOf("input", "srtPath", "output")
+        )
     }
 
     private val llmMutex = Mutex()
@@ -104,148 +119,177 @@ class LlmManager(private val context: Context) : LlmProvider {
     override suspend fun generateResponse(
         messages: List<Message>,
         tools: List<Tool>
-    ): LlmResponse = withContext(Dispatchers.IO) {
-        if (llmInference == null) {
-            val dir = modelDirectory
-            val taskFiles = dir.listFiles { _, name -> name.endsWith(".task", ignoreCase = true) }
-            if (!taskFiles.isNullOrEmpty()) {
-                try {
-                    loadModel(taskFiles.first())
-                } catch (e: Exception) {
+    ): LlmResponse = llmMutex.withLock {
+        withContext(Dispatchers.IO) {
+            if (llmInference == null) {
+                val dir = modelDirectory
+                val taskFiles = dir.listFiles { _, name -> name.endsWith(".task", ignoreCase = true) }
+                if (!taskFiles.isNullOrEmpty()) {
+                    try {
+                        val options = LlmInferenceOptions.builder()
+                            .setModelPath(taskFiles.first().absolutePath)
+                            .setMaxTokens(2048)
+                            .build()
+                        llmInference = LlmInference.createFromOptions(context, options)
+                        activeModelFile = taskFiles.first()
+                        _isReady.value = true
+                    } catch (e: Exception) {
+                        return@withContext LlmResponse(
+                            content = "Sistema: Error al cargar el modelo .task en MediaPipe: ${e.localizedMessage}",
+                            toolCalls = null
+                        )
+                    }
+                } else {
                     return@withContext LlmResponse(
-                        content = "Sistema: Error al cargar el modelo .task en MediaPipe: ${e.localizedMessage}",
+                        content = "Sistema: No hay un modelo .task cargado en MediaPipe LLM. Descarga Qwen2.5-1.5B-Instruct en formato .task.",
                         toolCalls = null
                     )
                 }
-            } else {
+            }
+
+            val toolInstructionPrompt = """
+Eres RoboPal, asistente de Android. Para usar herramienta responde EXACTAMENTE:
+<tool_call>{"name":"NOMBRE","arguments":{...}}</tool_call>
+
+REGLAS:
+1. "abre X" → open_app con el paquete.
+2. "busca X" → open_url.
+3. "toca X" → find_and_tap.
+4. NUNCA uses open_url para abrir apps.
+5. NUNCA dejes arguments vacío.
+6. NUNCA inventes coordenadas. Usa find_and_tap.
+7. Si no sabes el paquete, responde texto.
+
+Paquetes reales:
+YouTube=com.google.android.youtube, WhatsApp=com.whatsapp,
+TikTok=com.zhiliaoapp.musically, Instagram=com.instagram.android,
+Chrome=com.android.chrome, Gmail=com.google.android.gm,
+Spotify=com.spotify.music, Telegram=org.telegram.messenger,
+Calculadora=com.google.android.calculator, Reloj=com.google.android.deskclock
+
+Ejemplos:
+Usuario: abre YouTube
+Tú: <tool_call>{"name":"open_app","arguments":{"packageName":"com.google.android.youtube"}}</tool_call>
+
+Usuario: toca Iniciar
+Tú: <tool_call>{"name":"find_and_tap","arguments":{"text":"Iniciar"}}</tool_call>
+
+Usuario: ¿qué hora es?
+Tú: Son las 3 de la tarde.
+
+Herramientas: open_app, find_and_tap, type_text, press_back, press_home, press_recent, read_screen, read_screen_ocr, wait, open_url, take_screenshot.
+""".trimIndent()
+
+            val promptBuilder = StringBuilder()
+            promptBuilder.append("<|im_start|>system\n$toolInstructionPrompt<|im_end|>\n")
+
+            for (msg in messages) {
+                promptBuilder.append("<|im_start|>${msg.role}\n${msg.content}<|im_end|>\n")
+            }
+            promptBuilder.append("<|im_start|>assistant\n")
+
+            val rawResponseText = try {
+                val llm = llmInference ?: throw IllegalStateException("Modelo no cargado")
+                _isGenerating.value = true
+                try {
+                    val rawString = llm.generateResponse(promptBuilder.toString())
+                    val responseBytes = rawString.toByteArray(UTF8)
+                    String(responseBytes, UTF8)
+                } finally {
+                    _isGenerating.value = false
+                }
+            } catch (e: Exception) {
                 return@withContext LlmResponse(
-                    content = "Sistema: No hay un modelo .task cargado en MediaPipe LLM. Descarga Qwen2.5-1.5B-Instruct en formato .task.",
+                    content = "Error en la inferencia del modelo MediaPipe: ${e.localizedMessage}",
                     toolCalls = null
                 )
             }
-        }
 
-        val toolInstructionPrompt = """
-Eres RoboPal, asistente de Android. Ejecuta acciones con herramientas.
-
-Para usar herramienta responde EXACTAMENTE:
-<tool_call>{"name":"NOMBRE","arguments":{...}}</tool_call>
-
-Herramientas:
-- open_app(packageName) → {"name":"open_app","arguments":{"packageName":"com.whatsapp"}}
-- find_and_tap(text) → {"name":"find_and_tap","arguments":{"text":"Iniciar"}}
-- type_text(text) → {"name":"type_text","arguments":{"text":"hola"}}
-- press_back() press_home() press_recent()
-- read_screen() read_screen_ocr()
-- wait(ms) → {"name":"wait","arguments":{"ms":2000}}
-- open_url(url) → {"name":"open_url","arguments":{"url":"https://youtube.com"}}
-- take_screenshot()
-
-Paquetes conocidos:
-YouTube=com.google.android.youtube, WhatsApp=com.whatsapp,
-TikTok=com.zhiliaoapp.musically, Instagram=com.instagram.android,
-Facebook=com.facebook.katana, Chrome=com.android.chrome,
-Gmail=com.google.android.gm, Google Maps=com.google.android.apps.maps,
-Spotify=com.spotify.music, Telegram=org.telegram.messenger,
-Calculadora=com.google.android.calculator, Cámara=com.google.android.GoogleCamera,
-Reloj=com.google.android.deskclock, Ajustes=com.android.settings,
-RoboPal=com.robopal.app
-
-REGLAS:
-1. UNA herramienta a la vez.
-2. NUNCA inventes paquetes ni coordenadas. Si la app no está en la lista de paquetes conocidos, responde: "No conozco el paquete exacto de esa app. Dime el nombre o ábrela manualmente."
-3. Para tocar por nombre usa find_and_tap. NO uses tap(x,y).
-4. Si no necesitas herramienta, responde texto breve en español.
-""".trimIndent()
-
-        val promptBuilder = StringBuilder()
-        promptBuilder.append("<|im_start|>system\n$toolInstructionPrompt<|im_end|>\n")
-
-        for (msg in messages) {
-            promptBuilder.append("<|im_start|>${msg.role}\n${msg.content}<|im_end|>\n")
-        }
-        promptBuilder.append("<|im_start|>assistant\n")
-
-        val rawResponseText = try {
-            generateResponse(promptBuilder.toString())
-        } catch (e: Exception) {
-            return@withContext LlmResponse(
-                content = "Error en la inferencia del modelo MediaPipe: ${e.localizedMessage}",
-                toolCalls = null
+            // Paso 1: eliminar pares <think>...</think>
+            var limpio = rawResponseText.replace(
+                Regex("<think>.*?</think>", RegexOption.DOT_MATCHES_ALL), ""
             )
-        }
-
-        val toolCallsList = mutableListOf<ToolCall>()
-
-        val xmlRegex = Regex("<tool_call>(.*?)</tool_call>", RegexOption.DOT_MATCHES_ALL)
-        val xmlMatches = xmlRegex.findAll(rawResponseText)
-
-        for (match in xmlMatches) {
-            val jsonContent = match.groupValues[1].trim()
-            try {
-                val jsonObject = JSONObject(jsonContent)
-                val toolName = jsonObject.getString("name")
-                val argsObject = jsonObject.optJSONObject("arguments") ?: JSONObject()
-                val argsMap = jsonObjectToMap(argsObject)
-
-                toolCallsList.add(
-                    ToolCall(
-                        id = UUID.randomUUID().toString(),
-                        name = toolName,
-                        arguments = argsMap
-                    )
-                )
-            } catch (e: Exception) {
-                Log.e(TAG, "Error al parsear JSON de <tool_call>: ${e.message}", e)
+            // Paso 2: si queda un <think> abierto (modelo truncado), cortar ahí
+            if (limpio.contains("<think>")) {
+                limpio = limpio.substringBefore("<think>")
             }
-        }
 
-        var cleanedText = xmlRegex.replace(rawResponseText, "").trim()
+            // Paso 3: parsear tool calls sobre el texto limpio
+            val toolCallsList = mutableListOf<ToolCall>()
+            val xmlRegex = Regex("<tool_call>(.*?)</tool_call>", RegexOption.DOT_MATCHES_ALL)
+            val xmlMatches = xmlRegex.findAll(limpio)
 
-        if (toolCallsList.isEmpty()) {
-            val pythonRegex = Regex("""(\w+)\(([^)]*)\)""")
-            val pythonMatches = pythonRegex.findAll(cleanedText)
-            for (m in pythonMatches) {
-                val name = m.groupValues[1]
-                val argsStr = m.groupValues[2]
-                val argsMap = mutableMapOf<String, Any>()
+            for (match in xmlMatches) {
+                val jsonContent = match.groupValues[1].trim()
+                try {
+                    val jsonObject = JSONObject(jsonContent)
+                    val toolName = jsonObject.getString("name")
+                    val argsObject = jsonObject.optJSONObject("arguments") ?: JSONObject()
+                    val argsMap = jsonObjectToMap(argsObject)
 
-                if (argsStr.isNotBlank()) {
-                    argsStr.split(",").forEach { pair ->
-                        val parts = pair.split("=", limit = 2)
-                        if (parts.size == 2) {
-                            val key = parts[0].trim()
-                            val value = parts[1].trim().trim('"', '\'')
-                            argsMap[key] = value
-                        }
+                    val requeridos = requiredArgs[toolName] ?: emptyList()
+                    val faltantes = requeridos.filter { argsMap[it] == null || argsMap[it].toString().isBlank() }
+                    if (faltantes.isNotEmpty()) {
+                        Log.w(TAG, "Tool '$toolName' RECHAZADA: faltan $faltantes")
+                        continue
                     }
-                }
 
-                val knownTools = setOf(
-                    "tap", "swipe", "long_press", "type_text", "press_back", "press_home",
-                    "press_recent", "read_screen", "read_screen_ocr", "open_app", "find_and_tap",
-                    "wait", "download", "open_url", "take_screenshot", "toggle_flashlight"
-                )
-
-                if (knownTools.contains(name)) {
                     toolCallsList.add(
                         ToolCall(
                             id = UUID.randomUUID().toString(),
-                            name = name,
+                            name = toolName,
                             arguments = argsMap
                         )
                     )
+                } catch (e: Exception) {
+                    Log.e(TAG, "Error al parsear JSON de <tool_call>: ${e.message}", e)
                 }
             }
-            if (toolCallsList.isNotEmpty()) {
-                cleanedText = pythonRegex.replace(cleanedText, "").trim()
-            }
-        }
 
-        return@withContext LlmResponse(
-            content = if (cleanedText.isNotBlank()) cleanedText else null,
-            toolCalls = if (toolCallsList.isNotEmpty()) toolCallsList else null
-        )
+            var cleanedText = xmlRegex.replace(limpio, "").trim()
+
+            if (toolCallsList.isEmpty()) {
+                val pythonRegex = Regex("""(?:^|\n)\s*(\w+)\(([^)]*)\)""")
+                val pythonMatches = pythonRegex.findAll(cleanedText)
+                for (m in pythonMatches) {
+                    val name = m.groupValues[1]
+                    if (!requiredArgs.containsKey(name)) continue
+                    val argsStr = m.groupValues[2]
+                    val argsMap = mutableMapOf<String, Any>()
+
+                    if (argsStr.isNotBlank()) {
+                        argsStr.split(",").forEach { pair ->
+                            val parts = pair.split("=", limit = 2)
+                            if (parts.size == 2) {
+                                val key = parts[0].trim()
+                                val value = parts[1].trim().trim('"', '\'')
+                                argsMap[key] = value
+                            }
+                        }
+                    }
+
+                    val requeridos = requiredArgs[name] ?: emptyList()
+                    val faltantes = requeridos.filter { argsMap[it] == null || argsMap[it].toString().isBlank() }
+                    if (faltantes.isEmpty()) {
+                        toolCallsList.add(
+                            ToolCall(
+                                id = UUID.randomUUID().toString(),
+                                name = name,
+                                arguments = argsMap
+                            )
+                        )
+                    }
+                }
+                if (toolCallsList.isNotEmpty()) {
+                    cleanedText = pythonRegex.replace(cleanedText, "").trim()
+                }
+            }
+
+            return@withContext LlmResponse(
+                content = if (cleanedText.isNotBlank()) cleanedText else null,
+                toolCalls = if (toolCallsList.isNotEmpty()) toolCallsList else null
+            )
+        }
     }
 
     private fun jsonObjectToMap(jsonObject: JSONObject): Map<String, Any> {

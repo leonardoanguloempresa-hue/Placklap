@@ -1,18 +1,23 @@
 package com.robopal.app.services
 
+import android.Manifest
 import android.app.Notification
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.Service
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.os.Build
 import android.os.IBinder
 import android.util.Log
+import androidx.core.content.ContextCompat
 import com.robopal.app.RoboPalApplication
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withTimeoutOrNull
@@ -34,7 +39,7 @@ class VoiceForegroundService : Service() {
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-        startListening()
+        startHotwordListening()
         return START_STICKY
     }
 
@@ -48,48 +53,65 @@ class VoiceForegroundService : Service() {
         return null
     }
 
-    fun startListening() {
-        Log.i(TAG, "VoiceForegroundService: 1. Iniciando servicio de escucha continua...")
+    fun startHotwordListening() {
+        if (ContextCompat.checkSelfPermission(this, Manifest.permission.RECORD_AUDIO)
+            != PackageManager.PERMISSION_GRANTED) {
+            Log.e(TAG, "❌ RECORD_AUDIO no concedido")
+            return
+        }
+
+        Log.i("Vosk", "🎤 Hotword iniciado")
         serviceScope.launch(Dispatchers.IO) {
             try {
-                Log.i(TAG, "Vosk: 1. ensureHotwordModel…")
                 val modelDir = RoboPalApplication.voskManager.ensureHotwordModel()
-                Log.i(TAG, "Vosk: 2. modelo en ${modelDir.absolutePath} — ${modelDir.listFiles()?.size ?: 0} archivos")
+                Log.i("Vosk", "📦 Modelo: ${modelDir.absolutePath}")
 
                 RoboPalApplication.voskManager.initialize(modelDir)
-                Log.i(TAG, "Vosk: 3. inicializado")
+                Log.i("Vosk", "✅ Reconocedor activo")
 
                 val grammarList = listOf("silf", "sirf", "sulf", "sil", "solf", "oye silf", "hey silf", "ok silf", "[unk]")
                 RoboPalApplication.voskManager.startListening(grammar = grammarList)
-                Log.i(TAG, "Vosk: 4. escuchando con gramática: $grammarList")
 
                 val triggers = listOf("silf", "sirf", "sulf", "oye silf", "hey silf", "ok silf")
 
                 RoboPalApplication.voskManager.finalText.collect { transcribedText ->
+                    Log.i("Vosk", "📝 Detectado: '$transcribedText'")
                     val lower = transcribedText.lowercase().trim()
                     val matchedTrigger = triggers.firstOrNull { lower.contains(it) } ?: return@collect
 
-                    val comando = transcribedText.substringAfter(matchedTrigger, "").trim()
+                    val idx = lower.indexOf(matchedTrigger)
+                    val comando = if (idx >= 0) {
+                        transcribedText.substring(idx + matchedTrigger.length).trim()
+                    } else ""
+
+                    Log.i("Vosk", "🎯 Comando: '$comando'")
 
                     if (comando.length < 3) {
-                        Log.i(TAG, "Solo hotword '$matchedTrigger'. Esperando comando por 5s...")
-                        val siguienteComando = withTimeoutOrNull(5000L) {
-                            RoboPalApplication.voskManager.finalText.first { texto ->
-                                val t = texto.lowercase().trim()
-                                t.length > 3 && triggers.none { t.contains(it) }
+                        Log.i(TAG, "Solo hotword. Esperando comando 5s...")
+                        val siguiente = withTimeoutOrNull(5000L) {
+                            try {
+                                RoboPalApplication.voskManager.finalText.first { texto ->
+                                    val t = texto.lowercase().trim()
+                                    t.length > 3 && triggers.none { t.contains(it) }
+                                }
+                            } catch (e: CancellationException) {
+                                throw e
+                            } catch (e: Exception) {
+                                null
                             }
                         }
-                        if (!siguienteComando.isNullOrBlank()) {
-                            onSilfCommandDetected(siguienteComando)
+                        if (!siguiente.isNullOrBlank()) {
+                            onSilfCommandDetected(siguiente)
                         } else {
-                            Log.i(TAG, "Sin comando tras Silf. Volviendo a modo pasivo.")
+                            Log.i(TAG, "Sin comando. Volviendo a pasivo.")
+                            startHotwordListening()
                         }
                     } else {
                         onSilfCommandDetected(comando)
                     }
                 }
             } catch (e: Exception) {
-                Log.e(TAG, "Error inicializando o escuchando en VoiceForegroundService: ${e.message}", e)
+                Log.e(TAG, "Error escuchando en VoiceForegroundService: ${e.message}", e)
             }
         }
     }
@@ -99,6 +121,10 @@ class VoiceForegroundService : Service() {
         serviceScope.launch(Dispatchers.Main) {
             OverlayService.instance?.showFace()
             RoboPalApplication.agentEngine.agentLoop(prompt)
+        }
+        serviceScope.launch(Dispatchers.IO) {
+            delay(2000)
+            startHotwordListening()
         }
     }
 

@@ -38,7 +38,7 @@ class VoskManager(private val context: Context) {
     private val _partialText = MutableStateFlow("")
     val partialText: StateFlow<String> = _partialText.asStateFlow()
 
-    private val _finalText = MutableSharedFlow<String>(extraBufferCapacity = 8)
+    private val _finalText = MutableSharedFlow<String>(replay = 0, extraBufferCapacity = 16)
     val finalText: SharedFlow<String> = _finalText.asSharedFlow()
 
     private val _isListening = MutableStateFlow(false)
