@@ -70,7 +70,7 @@ fun ModelsScreen(
     val downloadProgressState by RoboPalApplication.downloadManager.downloadProgress.collectAsState()
 
     var selectedTabIndex by remember { mutableStateOf(0) }
-    val tabs = listOf("Explorador HuggingFace", "Modelos Descargados")
+    val tabs = listOf("MediaPipe (.task)", "Modelos Descargados")
 
     var searchQuery by remember { mutableStateOf("qwen") }
     var searchResults by remember { mutableStateOf<List<HuggingFaceModel>>(emptyList()) }
@@ -78,20 +78,26 @@ fun ModelsScreen(
     var downloadingRepoId by remember { mutableStateOf<String?>(null) }
     var statusMessage by remember { mutableStateOf("") }
 
-    var localGgufFiles by remember { mutableStateOf<List<File>>(emptyList()) }
+    var localTaskFiles by remember { mutableStateOf<List<File>>(emptyList()) }
     var activeModelName by remember { mutableStateOf("") }
 
     fun refreshLocalModels() {
         val dir = RoboPalApplication.llmManager.modelDirectory
         if (dir.exists()) {
-            val files = dir.listFiles { _, name -> name.endsWith(".gguf", ignoreCase = true) }?.toList() ?: emptyList()
-            localGgufFiles = files
+            val files = dir.listFiles { _, name -> name.endsWith(".task", ignoreCase = true) }?.toList() ?: emptyList()
+            localTaskFiles = files
             val active = RoboPalApplication.llmManager.activeModelFile
             if (active != null && files.contains(active)) {
                 activeModelName = active.name
             } else if (files.isNotEmpty()) {
                 activeModelName = files.first().name
-                RoboPalApplication.llmManager.setActiveModel(files.first())
+                scope.launch {
+                    try {
+                        RoboPalApplication.llmManager.setActiveModelAndLoad(files.first())
+                    } catch (e: Exception) {
+                        statusMessage = "Error cargando modelo: ${e.message}"
+                    }
+                }
             }
         }
     }
@@ -110,8 +116,8 @@ fun ModelsScreen(
             .padding(16.dp)
     ) {
         Text(
-            text = "Modelos GGUF",
-            fontSize = 22.sp,
+            text = "Modelos MediaPipe LLM (.task)",
+            fontSize = 20.sp,
             fontWeight = FontWeight.Bold,
             color = TextPrimary,
             modifier = Modifier.padding(bottom = 16.dp)
@@ -192,7 +198,7 @@ fun ModelsScreen(
                     OutlinedTextField(
                         value = searchQuery,
                         onValueChange = { searchQuery = it },
-                        placeholder = { Text("Buscar modelos GGUF...", color = TextSecondary, fontSize = 14.sp) },
+                        placeholder = { Text("Buscar modelos .task...", color = TextSecondary, fontSize = 14.sp) },
                         modifier = Modifier.weight(1f),
                         colors = OutlinedTextFieldDefaults.colors(
                             focusedBorderColor = androidx.compose.ui.graphics.Color.Transparent,
@@ -253,8 +259,8 @@ fun ModelsScreen(
                                 onDownload = {
                                     scope.launch {
                                         downloadingRepoId = model.id
-                                        statusMessage = "Buscando archivo .gguf en ${model.id}..."
-                                        val downloadUrl = hfClient.getGgufDownloadUrl(model.id)
+                                        statusMessage = "Buscando archivo .task en ${model.id}..."
+                                        val downloadUrl = hfClient.getTaskDownloadUrl(model.id)
                                         if (downloadUrl != null) {
                                             val fileName = downloadUrl.substringAfterLast("/")
                                             val targetFile = File(RoboPalApplication.llmManager.modelDirectory, fileName)
@@ -262,11 +268,16 @@ fun ModelsScreen(
                                             val result = RoboPalApplication.downloadManager.downloadFile(downloadUrl, targetFile.absolutePath)
                                             statusMessage = result
                                             if (targetFile.exists()) {
-                                                RoboPalApplication.llmManager.setActiveModel(targetFile)
+                                                try {
+                                                    RoboPalApplication.llmManager.setActiveModelAndLoad(targetFile)
+                                                    statusMessage = "Modelo ${targetFile.name} cargado con éxito en MediaPipe."
+                                                } catch (e: Exception) {
+                                                    statusMessage = "Error cargando modelo: ${e.message}"
+                                                }
                                             }
                                             refreshLocalModels()
                                         } else {
-                                            statusMessage = "Error: No se encontró ningún archivo .gguf en el repositorio."
+                                            statusMessage = "Error: No se encontró ningún archivo .task en el repositorio."
                                         }
                                         downloadingRepoId = null
                                     }
@@ -277,9 +288,9 @@ fun ModelsScreen(
                 }
             }
             1 -> {
-                if (localGgufFiles.isEmpty()) {
+                if (localTaskFiles.isEmpty()) {
                     Text(
-                        text = "Aún no hay modelos .gguf descargados en el dispositivo.",
+                        text = "Aún no hay modelos .task descargados en la carpeta de la app.",
                         color = TextSecondary,
                         modifier = Modifier.padding(16.dp)
                     )
@@ -288,14 +299,20 @@ fun ModelsScreen(
                         verticalArrangement = Arrangement.spacedBy(10.dp),
                         modifier = Modifier.fillMaxSize()
                     ) {
-                        items(localGgufFiles) { file ->
+                        items(localTaskFiles) { file ->
                             LocalModelCard(
                                 file = file,
                                 isActive = file.name == activeModelName,
                                 onSelect = {
-                                    activeModelName = file.name
-                                    RoboPalApplication.llmManager.setActiveModel(file)
-                                    statusMessage = "Modelo activo: ${file.name}"
+                                    scope.launch {
+                                        try {
+                                            RoboPalApplication.llmManager.setActiveModelAndLoad(file)
+                                            activeModelName = file.name
+                                            statusMessage = "Modelo cargado con éxito: ${file.name}"
+                                        } catch (e: Exception) {
+                                            statusMessage = "Error cargando modelo: ${e.message}"
+                                        }
+                                    }
                                 }
                             )
                         }
@@ -351,7 +368,7 @@ fun HuggingFaceModelCard(
                 } else {
                     Icon(imageVector = Icons.Default.Download, contentDescription = "Descargar", modifier = Modifier.size(16.dp), tint = PureBlack)
                     Spacer(modifier = Modifier.width(4.dp))
-                    Text("Obtener", fontSize = 12.sp, color = PureBlack)
+                    Text("Obtener .task", fontSize = 12.sp, color = PureBlack)
                 }
             }
         }
