@@ -79,7 +79,13 @@ class VoiceForegroundService : Service() {
                             break
                         }
                     }
-                    if (prompt.isBlank()) prompt = "Hola RoboPal"
+
+                    // FIX 3: Si prompt está en blanco tras remover el trigger, ignorar (no llamar al LLM ni enviar "Hola")
+                    if (prompt.isBlank()) {
+                        Log.i(TAG, "Solo hotword detectado, sin comando. Esperando siguiente frase.")
+                        return@collect
+                    }
+
                     onSilfCommandDetected(prompt)
                 }
             } catch (e: Exception) {
@@ -94,7 +100,7 @@ class VoiceForegroundService : Service() {
             // 1. Mostrar la cara flotante
             OverlayService.instance?.showFace()
 
-            // 2. Ejecutar el bucle del agente directamente
+            // 2. Ejecutar el bucle del agente directamente con el prompt real
             RoboPalApplication.agentEngine.agentLoop(prompt)
         }
     }

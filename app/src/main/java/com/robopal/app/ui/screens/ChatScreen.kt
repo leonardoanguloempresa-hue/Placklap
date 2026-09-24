@@ -1,11 +1,5 @@
 package com.robopal.app.ui.screens
 
-import androidx.compose.animation.core.FastOutSlowInEasing
-import androidx.compose.animation.core.RepeatMode
-import androidx.compose.animation.core.animateFloat
-import androidx.compose.animation.core.infiniteRepeatable
-import androidx.compose.animation.core.rememberInfiniteTransition
-import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
@@ -69,13 +63,15 @@ fun ChatScreen(
     val scope = rememberCoroutineScope()
     val isModelReady by RoboPalApplication.llmManager.isReady.collectAsState()
 
+    // FIX 2: Bloquear el input del chat mientras el agente trabaja
+    val isBlocked = agentState != AgentState.IDLE
+
     Column(
         modifier = modifier
             .fillMaxSize()
             .background(PureBlack)
             .padding(16.dp)
     ) {
-        // Título minimalista
         Text(
             text = "Silf",
             fontSize = 22.sp,
@@ -84,7 +80,6 @@ fun ChatScreen(
             modifier = Modifier.padding(bottom = 12.dp)
         )
 
-        // FIX 5: Banner de advertencia si el modelo MediaPipe .task no está cargado
         if (!isModelReady) {
             Row(
                 modifier = Modifier
@@ -112,7 +107,6 @@ fun ChatScreen(
             Spacer(modifier = Modifier.height(12.dp))
         }
 
-        // Conversación con flujo de texto limpio
         LazyColumn(
             modifier = Modifier
                 .weight(1f)
@@ -123,7 +117,6 @@ fun ChatScreen(
                 CleanMessageRow(message = message)
             }
 
-            // Indicador de procesamiento con bola flotante miniatura
             if (agentState == AgentState.THINKING || agentState == AgentState.WORKING || agentState == AgentState.LISTENING) {
                 item {
                     MiniRobotProcessingRow(agentState = agentState)
@@ -133,12 +126,12 @@ fun ChatScreen(
 
         Spacer(modifier = Modifier.height(12.dp))
 
-        // Barra de entrada flotante en forma de píldora
+        // Barra de entrada flotante en forma de píldora bloqueada si el agente trabaja
         Row(
             modifier = Modifier
                 .fillMaxWidth()
                 .clip(RoundedCornerShape(50))
-                .background(DarkCard)
+                .background(if (isBlocked) DarkCard.copy(alpha = 0.5f) else DarkCard)
                 .border(1.dp, SubtleBorder, RoundedCornerShape(50))
                 .padding(horizontal = 8.dp, vertical = 4.dp),
             verticalAlignment = Alignment.CenterVertically
@@ -146,31 +139,41 @@ fun ChatScreen(
             OutlinedTextField(
                 value = inputText,
                 onValueChange = { inputText = it },
-                placeholder = { Text("Escribe o di 'Silf'...", color = TextSecondary, fontSize = 14.sp) },
+                enabled = !isBlocked,
+                placeholder = {
+                    Text(
+                        if (isBlocked) "Silf está procesando..." else "Escribe o di 'Silf'...",
+                        color = TextSecondary,
+                        fontSize = 14.sp
+                    )
+                },
                 modifier = Modifier.weight(1f),
                 colors = OutlinedTextFieldDefaults.colors(
                     focusedBorderColor = androidx.compose.ui.graphics.Color.Transparent,
                     unfocusedBorderColor = androidx.compose.ui.graphics.Color.Transparent,
                     focusedContainerColor = androidx.compose.ui.graphics.Color.Transparent,
                     unfocusedContainerColor = androidx.compose.ui.graphics.Color.Transparent,
+                    disabledContainerColor = androidx.compose.ui.graphics.Color.Transparent,
+                    disabledBorderColor = androidx.compose.ui.graphics.Color.Transparent,
                     focusedTextColor = TextPrimary,
-                    unfocusedTextColor = TextPrimary
+                    unfocusedTextColor = TextPrimary,
+                    disabledTextColor = TextSecondary
                 )
             )
 
-            // Botón de micrófono manual
             IconButton(
                 onClick = {
                     OverlayService.instance?.showFace()
                     scope.launch {
                         RoboPalApplication.agentEngine.agentLoop("Escribe un mensaje en pantalla o saluda.")
                     }
-                }
+                },
+                enabled = !isBlocked
             ) {
                 Icon(
                     imageVector = Icons.Default.Mic,
                     contentDescription = "Micrófono",
-                    tint = TextSecondary,
+                    tint = if (isBlocked) TextSecondary.copy(alpha = 0.4f) else TextSecondary,
                     modifier = Modifier.size(20.dp)
                 )
             }
@@ -182,10 +185,11 @@ fun ChatScreen(
                         inputText = ""
                     }
                 },
+                enabled = !isBlocked && inputText.isNotBlank(),
                 modifier = Modifier
                     .size(36.dp)
                     .clip(RoundedCornerShape(50))
-                    .background(RobotPrimary)
+                    .background(if (!isBlocked && inputText.isNotBlank()) RobotPrimary else SubtleBorder)
             ) {
                 Icon(
                     imageVector = Icons.Default.Send,
