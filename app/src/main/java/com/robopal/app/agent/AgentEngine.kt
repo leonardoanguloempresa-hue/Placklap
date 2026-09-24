@@ -2,10 +2,12 @@ package com.robopal.app.agent
 
 import com.robopal.app.RoboPalApplication
 import com.robopal.app.managers.Logger
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.withTimeoutOrNull
+import kotlin.coroutines.coroutineContext
 
 class AgentEngine(
     private val toolRegistry: ToolRegistry = ToolRegistry(),
@@ -34,22 +36,32 @@ class AgentEngine(
     }
 
     suspend fun agentLoop(goal: String) {
-        val result = withTimeoutOrNull(AGENT_TIMEOUT_MS) {
-            try {
-                agentLoopInternal(goal)
-                true
-            } catch (e: Exception) {
-                null
+        // FIX 8: Capturar cualquier crash o excepción imprevista a nivel global
+        try {
+            val result = withTimeoutOrNull(AGENT_TIMEOUT_MS) {
+                try {
+                    agentLoopInternal(goal)
+                    true
+                } catch (e: Exception) {
+                    null
+                }
             }
-        }
 
-        if (result == null) {
+            if (result == null) {
+                _state.value = AgentState.ERROR
+                val timeoutMsg = "No pude completar la tarea a tiempo. Intenta de nuevo."
+                val currentMsgs = _agentMessages.value.toMutableList()
+                currentMsgs.add(Message("assistant", timeoutMsg))
+                _agentMessages.value = currentMsgs
+                RoboPalApplication.ttsManager.speak(timeoutMsg)
+            }
+        } catch (t: Throwable) {
             _state.value = AgentState.ERROR
-            val timeoutMsg = "No pude completar la tarea a tiempo. Intenta de nuevo."
+            val internalErrorMsg = "Ocurrió un error interno. Intenta de nuevo."
             val currentMsgs = _agentMessages.value.toMutableList()
-            currentMsgs.add(Message("assistant", timeoutMsg))
+            currentMsgs.add(Message("assistant", internalErrorMsg))
             _agentMessages.value = currentMsgs
-            RoboPalApplication.ttsManager.speak(timeoutMsg)
+            RoboPalApplication.ttsManager.speak(internalErrorMsg)
         }
     }
 
@@ -89,8 +101,16 @@ class AgentEngine(
         var lastAssistantResponse: String? = null
 
         while (iterations < MAX_ITERATIONS && !completed) {
+            // FIX 6: Garantizar que la cancelación de la corrutina libere el loop antes de cada iteración
+            coroutineContext.ensureActive()
+
             iterations++
             _state.value = AgentState.THINKING
+
+            if (!RoboPalApplication.llmManager.isReady.value) {
+                _state.value = AgentState.ERROR
+                return
+            }
 
             val response = try {
                 llmProvider.generateResponse(messages, toolRegistry.getAllTools())
@@ -123,6 +143,8 @@ class AgentEngine(
             if (!toolCalls.isNullOrEmpty()) {
                 _state.value = AgentState.WORKING
                 for (toolCall in toolCalls) {
+                    coroutineContext.ensureActive()
+
                     val bannerMsg = Message(
                         role = "assistant",
                         content = "Ejecutando: ${toolCall.name} con parámetros: ${toolCall.arguments}"

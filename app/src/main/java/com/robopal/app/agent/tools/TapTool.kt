@@ -1,5 +1,7 @@
 package com.robopal.app.agent.tools
 
+import android.content.Context
+import com.robopal.app.RoboPalApplication
 import com.robopal.app.agent.Tool
 import com.robopal.app.services.AgentAccessibilityService
 
@@ -23,6 +25,12 @@ class TapTool : Tool {
             ?: return "Error: Parámetro 'x' no válido."
         val y = (args["y"] as? Number)?.toFloat()
             ?: return "Error: Parámetro 'y' no válido."
+
+        val context: Context = RoboPalApplication.instance
+        val metrics = context.resources.displayMetrics
+        if (x < 0 || y < 0 || x > metrics.widthPixels || y > metrics.heightPixels) {
+            return "Error: coordenadas ($x, $y) fuera de pantalla (max ${metrics.widthPixels}x${metrics.heightPixels}). Usa find_and_tap."
+        }
 
         val success = service.tap(x, y)
         return if (success) {

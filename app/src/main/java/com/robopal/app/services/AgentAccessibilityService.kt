@@ -2,8 +2,10 @@ package com.robopal.app.services
 
 import android.accessibilityservice.AccessibilityService
 import android.accessibilityservice.GestureDescription
+import android.content.Intent
 import android.graphics.Path
 import android.graphics.Rect
+import android.util.Log
 import android.view.accessibility.AccessibilityEvent
 import android.view.accessibility.AccessibilityNodeInfo
 import kotlinx.coroutines.suspendCancellableCoroutine
@@ -12,12 +14,20 @@ import kotlin.coroutines.resume
 class AgentAccessibilityService : AccessibilityService() {
 
     companion object {
+        private const val TAG = "AgentAccessibilityService"
         var instance: AgentAccessibilityService? = null
     }
 
     override fun onServiceConnected() {
         super.onServiceConnected()
         instance = this
+        Log.i(TAG, "✅ AccessibilityService conectado. instance = $this")
+    }
+
+    override fun onUnbind(intent: Intent?): Boolean {
+        Log.w(TAG, "⚠️ AccessibilityService desconectado")
+        instance = null
+        return super.onUnbind(intent)
     }
 
     override fun onDestroy() {
@@ -28,11 +38,11 @@ class AgentAccessibilityService : AccessibilityService() {
     }
 
     override fun onAccessibilityEvent(event: AccessibilityEvent?) {
-        // Eventos procesados si se requieren
+        // Eventos procesados sin loguear cada TYPE_VIEW_*
     }
 
     override fun onInterrupt() {
-        // Interrupción del servicio
+        Log.w(TAG, "AccessibilityService interrumpido por el sistema")
     }
 
     val activePackageName: String?

@@ -35,10 +35,12 @@ class OpenAppTool : Tool {
                 launchIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
                 context.startActivity(launchIntent)
                 return "Aplicación con paquete '$explicitPackage' abierta con éxito."
+            } else {
+                return "Sistema: La app '$explicitPackage' no está instalada. Verifica el nombre del paquete."
             }
         }
 
-        // 2. Producción estricta: Iterar sobre pm.getInstalledPackages(PackageManager.GET_META_DATA)
+        // 2. Iterar sobre paquetes instalados
         val installedPackages = pm.getInstalledPackages(PackageManager.GET_META_DATA)
         var matchedPackageName: String? = null
         var matchedAppLabel: String? = null
@@ -63,9 +65,11 @@ class OpenAppTool : Tool {
                 launchIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
                 context.startActivity(launchIntent)
                 return "Aplicación '$matchedAppLabel' ($matchedPackageName) abierta con éxito."
+            } else {
+                return "Sistema: La app '$matchedAppLabel' ($matchedPackageName) no está instalada o no tiene actividad principal."
             }
         }
 
-        return "Error: No se encontró ninguna aplicación instalada que coincida con '$appNameArg'."
+        return "Sistema: La app '$appNameArg' no está instalada. Verifica el nombre del paquete."
     }
 }

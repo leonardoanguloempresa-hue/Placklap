@@ -13,6 +13,8 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import org.json.JSONArray
 import org.json.JSONObject
@@ -27,6 +29,7 @@ class LlmManager(private val context: Context) : LlmProvider {
         private val UTF8 = StandardCharsets.UTF_8
     }
 
+    private val llmMutex = Mutex()
     private var llmInference: LlmInference? = null
     var activeModelFile: File? = null
         private set
@@ -68,28 +71,33 @@ class LlmManager(private val context: Context) : LlmProvider {
         return false
     }
 
-    suspend fun loadModel(modelFile: File) = withContext(Dispatchers.IO) {
-        if (!modelFile.exists()) throw IllegalArgumentException("Modelo no encontrado: ${modelFile.absolutePath}")
-        llmInference?.close()
-        Log.i(TAG, "Cargando modelo MediaPipe .task en memoria: ${modelFile.absolutePath}")
-        val options = LlmInferenceOptions.builder()
-            .setModelPath(modelFile.absolutePath)
-            .setMaxTokens(2048)
-            .build()
-        llmInference = LlmInference.createFromOptions(context, options)
-        activeModelFile = modelFile
-        _isReady.value = true
-        Log.i(TAG, "Modelo MediaPipe .task cargado con éxito.")
+    suspend fun loadModel(modelFile: File) = llmMutex.withLock {
+        withContext(Dispatchers.IO) {
+            if (!modelFile.exists()) throw IllegalArgumentException("Modelo no encontrado: ${modelFile.absolutePath}")
+            llmInference?.close()
+            Log.i(TAG, "Cargando modelo MediaPipe .task en memoria (con Mutex): ${modelFile.absolutePath}")
+            val options = LlmInferenceOptions.builder()
+                .setModelPath(modelFile.absolutePath)
+                .setMaxTokens(2048)
+                .build()
+            llmInference = LlmInference.createFromOptions(context, options)
+            activeModelFile = modelFile
+            _isReady.value = true
+            Log.i(TAG, "Modelo MediaPipe .task cargado con éxito.")
+        }
     }
 
-    suspend fun generateResponse(prompt: String): String = withContext(Dispatchers.IO) {
-        val llm = llmInference ?: throw IllegalStateException("Modelo no cargado")
-        _isGenerating.value = true
-        try {
-            val responseBytes = llm.generateResponse(prompt).toByteArray(UTF8)
-            String(responseBytes, UTF8)
-        } finally {
-            _isGenerating.value = false
+    suspend fun generateResponse(prompt: String): String = llmMutex.withLock {
+        withContext(Dispatchers.IO) {
+            val llm = llmInference ?: throw IllegalStateException("Modelo no cargado")
+            _isGenerating.value = true
+            try {
+                val rawString = llm.generateResponse(prompt)
+                val responseBytes = rawString.toByteArray(UTF8)
+                String(responseBytes, UTF8)
+            } finally {
+                _isGenerating.value = false
+            }
         }
     }
 
@@ -118,35 +126,40 @@ class LlmManager(private val context: Context) : LlmProvider {
         }
 
         val toolInstructionPrompt = """
-Herramientas disponibles:
-- tap(x, y)
-- swipe(x1, y1, x2, y2, durationMs)
-- long_press(x, y, durationMs)
-- type_text(text)
-- press_back()
-- press_home()
-- press_recent()
-- read_screen()
-- read_screen_ocr()
-- open_app(packageName)
-- find_and_tap(text)
-- wait(ms)
-- download(url, outputPath)
-- open_url(url)
+Eres RoboPal, asistente de Android. Ejecuta acciones con herramientas.
+
+Para usar herramienta responde EXACTAMENTE:
+<tool_call>{"name":"NOMBRE","arguments":{...}}</tool_call>
+
+Herramientas:
+- open_app(packageName) → {"name":"open_app","arguments":{"packageName":"com.whatsapp"}}
+- find_and_tap(text) → {"name":"find_and_tap","arguments":{"text":"Iniciar"}}
+- type_text(text) → {"name":"type_text","arguments":{"text":"hola"}}
+- press_back() press_home() press_recent()
+- read_screen() read_screen_ocr()
+- wait(ms) → {"name":"wait","arguments":{"ms":2000}}
+- open_url(url) → {"name":"open_url","arguments":{"url":"https://youtube.com"}}
 - take_screenshot()
-- toggle_flashlight(enabled)
+
+Paquetes conocidos:
+YouTube=com.google.android.youtube, WhatsApp=com.whatsapp,
+TikTok=com.zhiliaoapp.musically, Instagram=com.instagram.android,
+Facebook=com.facebook.katana, Chrome=com.android.chrome,
+Gmail=com.google.android.gm, Google Maps=com.google.android.apps.maps,
+Spotify=com.spotify.music, Telegram=org.telegram.messenger,
+Calculadora=com.google.android.calculator, Cámara=com.google.android.GoogleCamera,
+Reloj=com.google.android.deskclock, Ajustes=com.android.settings,
+RoboPal=com.robopal.app
+
+REGLAS:
+1. UNA herramienta a la vez.
+2. NUNCA inventes paquetes ni coordenadas. Si la app no está en la lista de paquetes conocidos, responde: "No conozco el paquete exacto de esa app. Dime el nombre o ábrela manualmente."
+3. Para tocar por nombre usa find_and_tap. NO uses tap(x,y).
+4. Si no necesitas herramienta, responde texto breve en español.
 """.trimIndent()
 
-        // FIX 1: Formateo ChatML para que MediaPipe respete las instrucciones de System
         val promptBuilder = StringBuilder()
-        promptBuilder.append("<|im_start|>system\n")
-        promptBuilder.append("Eres RoboPal, un agente de automatización de Android.\n")
-        promptBuilder.append("$toolInstructionPrompt\n\n")
-        promptBuilder.append("REGLAS ESTRICTAS:\n")
-        promptBuilder.append("1. Si necesitas una herramienta, tu respuesta DEBE ser EXACTAMENTE: <tool_call>{\"name\":\"NOMBRE\",\"arguments\":{...}}</tool_call>\n")
-        promptBuilder.append("2. NUNCA escribas tool calls como open_app(packageName=...) — eso está PROHIBIDO.\n")
-        promptBuilder.append("3. Si no necesitas herramienta, responde solo texto normal.\n")
-        promptBuilder.append("<|im_end|>\n")
+        promptBuilder.append("<|im_start|>system\n$toolInstructionPrompt<|im_end|>\n")
 
         for (msg in messages) {
             promptBuilder.append("<|im_start|>${msg.role}\n${msg.content}<|im_end|>\n")
@@ -164,7 +177,6 @@ Herramientas disponibles:
 
         val toolCallsList = mutableListOf<ToolCall>()
 
-        // 1. Parser Primario: Extracción de bloques <tool_call>...</tool_call> mediante Regex XML
         val xmlRegex = Regex("<tool_call>(.*?)</tool_call>", RegexOption.DOT_MATCHES_ALL)
         val xmlMatches = xmlRegex.findAll(rawResponseText)
 
@@ -188,7 +200,6 @@ Herramientas disponibles:
             }
         }
 
-        // FIX 2: Fallback a Parser Python si el XML no encontró nada
         var cleanedText = xmlRegex.replace(rawResponseText, "").trim()
 
         if (toolCallsList.isEmpty()) {
@@ -210,7 +221,6 @@ Herramientas disponibles:
                     }
                 }
 
-                // Verificar si coincide con alguna herramienta conocida
                 val knownTools = setOf(
                     "tap", "swipe", "long_press", "type_text", "press_back", "press_home",
                     "press_recent", "read_screen", "read_screen_ocr", "open_app", "find_and_tap",
@@ -266,9 +276,11 @@ Herramientas disponibles:
         return list
     }
 
-    fun unload() {
-        llmInference?.close()
-        llmInference = null
-        _isReady.value = false
+    suspend fun unload() = llmMutex.withLock {
+        withContext(Dispatchers.IO) {
+            llmInference?.close()
+            llmInference = null
+            _isReady.value = false
+        }
     }
 }
